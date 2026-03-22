@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solaris 3D Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body class="font-sans antialiased selection:bg-indigo-500 selection:text-white">
+
+    <div id="canvas-container"></div>
+
+    <div class="absolute inset-0 pointer-events-none flex flex-col md:flex-row z-10">
+        <div class="absolute top-0 left-0 p-6 pointer-events-auto">
+            <h1 class="text-5xl font-bold tracking-tighter text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">SOLARIS</h1>
+            <p class="text-sm text-blue-300 font-mono tracking-widest mt-1 opacity-90">SYSTEM EXPLORER</p>
+        </div>
+
+        <div class="absolute bottom-0 left-0 w-full md:w-auto md:top-28 md:bottom-auto md:left-6 p-4 pointer-events-auto">
+            <div class="glass rounded-xl p-3 md:w-72 max-h-[30vh] md:max-h-[65vh] overflow-y-auto flex flex-row md:flex-col gap-1 overflow-x-auto shadow-2xl">
+                <div id="planet-list" class="flex md:flex-col gap-1"></div>
+            </div>
+        </div>
+
+        <div class="absolute bottom-6 right-6 md:top-28 md:bottom-auto w-[90%] md:w-80 pointer-events-auto transition-all duration-500 transform translate-y-0 opacity-100" id="info-panel">
+            <div class="glass rounded-xl p-6 shadow-2xl border-t border-white/10">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 id="info-name" class="text-3xl font-bold text-white tracking-tight drop-shadow-md">The Sun</h2>
+                    <span id="info-type" class="text-[10px] font-bold tracking-wider px-2 py-1 rounded bg-yellow-500/20 text-yellow-200 border border-yellow-500/30">STAR</span> 
+                </div>
+                
+                <p id="info-desc" class="text-gray-200 text-sm leading-relaxed mb-4 font-light"></p>
+                
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="bg-black/40 p-2 rounded border border-white/10">
+                        <span class="block text-gray-400 mb-1 uppercase tracking-wider text-[10px]">Distance</span>
+                        <span id="info-dist" class="block text-white font-mono text-sm"></span>
+                    </div>
+                    <div class="bg-black/40 p-2 rounded border border-white/10">
+                        <span class="block text-gray-400 mb-1 uppercase tracking-wider text-[10px]">Orbital Period</span>
+                        <span id="info-year" class="block text-white font-mono text-sm"></span>
+                    </div>
+                </div>
+                
+                <button id="reset-cam" class="mt-5 w-full bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-100 py-2 rounded border border-indigo-500/30 transition-colors text-xs uppercase tracking-widest font-semibold">
+                    Reset Overview
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
