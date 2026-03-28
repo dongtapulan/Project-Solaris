@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CONFIG, SYSTEM_DATA } from './data.js';
 import { scene, camera, renderer, handleResize } from './scene.js';
-import { createStars, createOortCloud, buildSystem, loadingManager } from './entities.js'; // Added createOortCloud & loadingManager
+import { createStars, createOortCloud, buildSystem, loadingManager } from './entities.js';
 import { initUI, updatePanel } from './ui.js';
-import { initLoader } from './loader.js'; // New Loader Module
+import { initLoader } from './loader.js';
 
 // 1. Initialize Loading Screen
 initLoader(loadingManager);
@@ -16,11 +16,12 @@ document.getElementById('canvas-container').appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.maxDistance = 6000; // Increased to allow viewing the Oort Cloud
+controls.maxDistance = 6000; 
+controls.enablePan = true; // Ensure panning is on for the "Explorer" feel
 
 // 2. Initialize System Entities
 createStars(scene);
-const oortCloud = createOortCloud(scene); // Initialize Oort Cloud
+const oortCloud = createOortCloud(scene); 
 const objects = buildSystem(scene, SYSTEM_DATA);
 
 let focusedObject = null;
@@ -72,6 +73,14 @@ function animate() {
     // Smooth camera movement
     camera.position.lerp(targetCameraPosition, CONFIG.smoothness);
 
+    // --- PAN LIMITER (Keep user inside the Kuiper Belt) ---
+    const PAN_LIMIT = 3000; 
+    const target = controls.target;
+    if (target.length() > PAN_LIMIT) {
+        target.setLength(PAN_LIMIT);
+    }
+    // -----------------------------------------------------
+
     // Subtle Oort Cloud Drift
     if (oortCloud) {
         oortCloud.rotation.y += 0.00002;
@@ -82,43 +91,25 @@ function animate() {
         if (obj.type === 'belt') {
             obj.mesh.rotation.y += obj.data.speed * 0.2; 
         } else {
-            // 1. Orbital Movement (Revolution)
+            // 1. Orbital Movement
             if (obj.data.distance > 0) {
                 const a = obj.data.distance;
                 const e = obj.data.eccentricity || 0;
-                
                 obj.angle += obj.data.speed * CONFIG.rotationSpeed;
-                
                 const r = (a * (1 - e * e)) / (1 + e * Math.cos(obj.angle));
-                
                 obj.mesh.position.x = Math.cos(obj.angle) * r;
                 obj.mesh.position.z = Math.sin(obj.angle) * r;
-
-                if (obj.data.inclination) {
-                    obj.group.rotation.x = obj.data.inclination;
-                }
+                if (obj.data.inclination) obj.group.rotation.x = obj.data.inclination;
             }
 
-            // 2. Axial Rotation (Spinning)
+            // 2. Axial Rotation
             const spinBase = 0.002; 
-            if (obj.data.name === "Sun") {
-                obj.mesh.rotation.y += 0.001;
-            } else if (obj.data.name === "Uranus") {
-                obj.mesh.rotation.z += spinBase * 2;
-            } else if (obj.data.type === "GAS GIANT") {
-                obj.mesh.rotation.y += spinBase * 4;
-            } else {
-                obj.mesh.rotation.y += spinBase;
-            }
+            if (obj.data.name === "Sun") obj.mesh.rotation.y += 0.001;
+            else if (obj.data.name === "Uranus") obj.mesh.rotation.z += spinBase * 2;
+            else if (obj.data.type === "GAS GIANT") obj.mesh.rotation.y += spinBase * 4;
+            else obj.mesh.rotation.y += spinBase;
 
-            // Ring Rotation
-            obj.mesh.children.forEach(child => {
-                if (child instanceof THREE.Mesh && child.geometry.type === "RingGeometry") {
-                    child.rotation.z += 0.0015; 
-                }
-            });
-
-            // 3. Comet Tail Realism
+            // 3. Comet Tail
             if (obj.type === 'comet' && obj.tail) {
                 const posAttr = obj.tail.geometry.attributes.position;
                 for (let i = 0; i < posAttr.count; i++) {
@@ -126,14 +117,10 @@ function animate() {
                     x -= Math.random() * 0.4;
                     if (x < -25) x = 0; 
                     posAttr.setX(i, x);
-                    posAttr.setY(i, (Math.random() - 0.5) * 0.2);
-                    posAttr.setZ(i, (Math.random() - 0.5) * 0.2);
                 }
                 posAttr.needsUpdate = true;
-
                 const worldPos = new THREE.Vector3();
                 obj.mesh.getWorldPosition(worldPos);
-                // Tail always points away from the center (Sun)
                 const sunToComet = worldPos.clone().normalize();
                 obj.tail.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), sunToComet);
             }
@@ -151,16 +138,13 @@ function animate() {
         }
     });
 
-    // 5. Dynamic Camera Tracking (Stickiness)
+    // 5. Dynamic Camera Tracking
     if (focusedObject && focusedObject.type !== 'belt') {
         const worldPos = new THREE.Vector3();
         focusedObject.mesh.getWorldPosition(worldPos);
-        
         controls.target.lerp(worldPos, 0.2);
-        
         const dist = 15 + (focusedObject.data.size * CONFIG.zoomFactor);
         const relativeOffset = new THREE.Vector3(dist, dist * 0.4, dist);
-        
         targetCameraPosition.copy(worldPos).add(relativeOffset);
     }
 
