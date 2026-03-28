@@ -17,7 +17,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.maxDistance = 6000; 
-controls.enablePan = true; // Ensure panning is on for the "Explorer" feel
+controls.enablePan = true;
 
 // 2. Initialize System Entities
 createStars(scene);
@@ -27,6 +27,11 @@ const objects = buildSystem(scene, SYSTEM_DATA);
 let focusedObject = null;
 const targetCameraPosition = new THREE.Vector3();
 targetCameraPosition.copy(camera.position);
+
+// Flag to track user interaction
+let isUserInteracting = false;
+controls.addEventListener('start', () => { isUserInteracting = true; });
+controls.addEventListener('end', () => { isUserInteracting = false; });
 
 /**
  * Camera focus logic
@@ -70,28 +75,28 @@ window.addEventListener('resize', handleResize);
 function animate() {
     requestAnimationFrame(animate);
     
-    // Smooth camera movement
-    camera.position.lerp(targetCameraPosition, CONFIG.smoothness);
+    // 1. Smooth camera movement - ONLY if the user isn't manually rotating
+    if (!isUserInteracting) {
+        camera.position.lerp(targetCameraPosition, CONFIG.smoothness);
+    }
 
-    // --- PAN LIMITER (Keep user inside the Kuiper Belt) ---
-    const PAN_LIMIT = 3000; 
+    // --- PAN LIMITER ---
+    const PAN_LIMIT = 3500; 
     const target = controls.target;
     if (target.length() > PAN_LIMIT) {
         target.setLength(PAN_LIMIT);
     }
-    // -----------------------------------------------------
 
     // Subtle Oort Cloud Drift
     if (oortCloud) {
         oortCloud.rotation.y += 0.00002;
-        oortCloud.rotation.x += 0.00001;
     }
 
     objects.forEach(obj => {
         if (obj.type === 'belt') {
             obj.mesh.rotation.y += obj.data.speed * 0.2; 
         } else {
-            // 1. Orbital Movement
+            // Orbital Movement
             if (obj.data.distance > 0) {
                 const a = obj.data.distance;
                 const e = obj.data.eccentricity || 0;
@@ -102,14 +107,12 @@ function animate() {
                 if (obj.data.inclination) obj.group.rotation.x = obj.data.inclination;
             }
 
-            // 2. Axial Rotation
+            // Axial Rotation
             const spinBase = 0.002; 
             if (obj.data.name === "Sun") obj.mesh.rotation.y += 0.001;
-            else if (obj.data.name === "Uranus") obj.mesh.rotation.z += spinBase * 2;
-            else if (obj.data.type === "GAS GIANT") obj.mesh.rotation.y += spinBase * 4;
             else obj.mesh.rotation.y += spinBase;
 
-            // 3. Comet Tail
+            // Comet Tail
             if (obj.type === 'comet' && obj.tail) {
                 const posAttr = obj.tail.geometry.attributes.position;
                 for (let i = 0; i < posAttr.count; i++) {
@@ -125,7 +128,7 @@ function animate() {
                 obj.tail.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), sunToComet);
             }
 
-            // 4. Moon Animation
+            // Moon Animation
             if (obj.moons) {
                 obj.moons.forEach(moon => {
                     moon.angle += moon.data.speed * CONFIG.rotationSpeed;
@@ -138,14 +141,21 @@ function animate() {
         }
     });
 
-    // 5. Dynamic Camera Tracking
+    // 2. Dynamic Camera Tracking (Stickiness)
     if (focusedObject && focusedObject.type !== 'belt') {
         const worldPos = new THREE.Vector3();
         focusedObject.mesh.getWorldPosition(worldPos);
-        controls.target.lerp(worldPos, 0.2);
+        
+        // Stick the orbit pivot to the moving planet
+        controls.target.copy(worldPos); 
+        
+        // Update the autopilot target position based on planet's new location
         const dist = 15 + (focusedObject.data.size * CONFIG.zoomFactor);
         const relativeOffset = new THREE.Vector3(dist, dist * 0.4, dist);
-        targetCameraPosition.copy(worldPos).add(relativeOffset);
+        
+        if (!isUserInteracting) {
+            targetCameraPosition.copy(worldPos).add(relativeOffset);
+        }
     }
 
     controls.update();
