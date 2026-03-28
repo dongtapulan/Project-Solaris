@@ -2,8 +2,12 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CONFIG, SYSTEM_DATA } from './data.js';
 import { scene, camera, renderer, handleResize } from './scene.js';
-import { createStars, buildSystem } from './entities.js';
+import { createStars, createOortCloud, buildSystem, loadingManager } from './entities.js'; // Added createOortCloud & loadingManager
 import { initUI, updatePanel } from './ui.js';
+import { initLoader } from './loader.js'; // New Loader Module
+
+// 1. Initialize Loading Screen
+initLoader(loadingManager);
 
 // Append renderer to the DOM
 document.getElementById('canvas-container').appendChild(renderer.domElement);
@@ -12,10 +16,11 @@ document.getElementById('canvas-container').appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.maxDistance = 4000; 
+controls.maxDistance = 6000; // Increased to allow viewing the Oort Cloud
 
-// Initialize System
+// 2. Initialize System Entities
 createStars(scene);
+const oortCloud = createOortCloud(scene); // Initialize Oort Cloud
 const objects = buildSystem(scene, SYSTEM_DATA);
 
 let focusedObject = null;
@@ -67,16 +72,21 @@ function animate() {
     // Smooth camera movement
     camera.position.lerp(targetCameraPosition, CONFIG.smoothness);
 
+    // Subtle Oort Cloud Drift
+    if (oortCloud) {
+        oortCloud.rotation.y += 0.00002;
+        oortCloud.rotation.x += 0.00001;
+    }
+
     objects.forEach(obj => {
         if (obj.type === 'belt') {
-            obj.mesh.rotation.y += obj.data.speed * 0.2; // Slower belt drift
+            obj.mesh.rotation.y += obj.data.speed * 0.2; 
         } else {
             // 1. Orbital Movement (Revolution)
             if (obj.data.distance > 0) {
                 const a = obj.data.distance;
                 const e = obj.data.eccentricity || 0;
                 
-                // Rotation Speed from data.js adjusted by global CONFIG
                 obj.angle += obj.data.speed * CONFIG.rotationSpeed;
                 
                 const r = (a * (1 - e * e)) / (1 + e * Math.cos(obj.angle));
@@ -90,16 +100,15 @@ function animate() {
             }
 
             // 2. Axial Rotation (Spinning)
-            // Different planets spin at different rates for realism
             const spinBase = 0.002; 
             if (obj.data.name === "Sun") {
-                obj.mesh.rotation.y += 0.001; // Sun spins slowly
+                obj.mesh.rotation.y += 0.001;
             } else if (obj.data.name === "Uranus") {
-                obj.mesh.rotation.z += spinBase * 2; // Uranus on its side
+                obj.mesh.rotation.z += spinBase * 2;
             } else if (obj.data.type === "GAS GIANT") {
-                obj.mesh.rotation.y += spinBase * 4; // Gas giants spin very fast
+                obj.mesh.rotation.y += spinBase * 4;
             } else {
-                obj.mesh.rotation.y += spinBase; // Terrestrial planets
+                obj.mesh.rotation.y += spinBase;
             }
 
             // Ring Rotation
@@ -109,7 +118,7 @@ function animate() {
                 }
             });
 
-            // 3. Comet Tail
+            // 3. Comet Tail Realism
             if (obj.type === 'comet' && obj.tail) {
                 const posAttr = obj.tail.geometry.attributes.position;
                 for (let i = 0; i < posAttr.count; i++) {
@@ -124,6 +133,7 @@ function animate() {
 
                 const worldPos = new THREE.Vector3();
                 obj.mesh.getWorldPosition(worldPos);
+                // Tail always points away from the center (Sun)
                 const sunToComet = worldPos.clone().normalize();
                 obj.tail.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), sunToComet);
             }
@@ -141,12 +151,11 @@ function animate() {
         }
     });
 
-    // 5. Dynamic Camera Tracking
+    // 5. Dynamic Camera Tracking (Stickiness)
     if (focusedObject && focusedObject.type !== 'belt') {
         const worldPos = new THREE.Vector3();
         focusedObject.mesh.getWorldPosition(worldPos);
         
-        // Target lerp is slightly faster than camera lerp to stay ahead of the motion
         controls.target.lerp(worldPos, 0.2);
         
         const dist = 15 + (focusedObject.data.size * CONFIG.zoomFactor);

@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 
-const textureLoader = new THREE.TextureLoader();
+// 1. Loading Management
+export const loadingManager = new THREE.LoadingManager();
+const textureLoader = new THREE.TextureLoader(loadingManager);
+
 const TEX_PATH = 'assets/textures/';
 
 const TEXTURE_MAP = {
@@ -19,6 +22,9 @@ const TEXTURE_MAP = {
     "Saturn_Ring": TEX_PATH + "2k_saturn_ring_alpha.png"
 };
 
+/**
+ * Distant Starfield
+ */
 export function createStars(scene) {
     const geometry = new THREE.BufferGeometry();
     const vertices = [];
@@ -49,6 +55,43 @@ export function createStars(scene) {
         sizeAttenuation: true 
     });
     scene.add(new THREE.Points(geometry, material));
+}
+
+/**
+ * The Oort Cloud (Distant Icy Shell)
+ */
+export function createOortCloud(scene) {
+    const particles = 15000;
+    const geometry = new THREE.BufferGeometry();
+    const positions = [];
+    const color = new THREE.Color(0x99ccff);
+
+    for (let i = 0; i < particles; i++) {
+        const u = Math.random();
+        const v = Math.random();
+        const theta = 2 * Math.PI * u;
+        const phi = Math.acos(2 * v - 1);
+        const r = 4000 + Math.random() * 2000; 
+
+        positions.push(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.sin(phi) * Math.sin(theta),
+            r * Math.cos(phi)
+        );
+    }
+
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({
+        size: 2,
+        color: color,
+        transparent: true,
+        opacity: 0.15,
+        blending: THREE.AdditiveBlending
+    });
+
+    const cloud = new THREE.Points(geometry, material);
+    scene.add(cloud);
+    return cloud;
 }
 
 function createOrbitLine(data) {
@@ -96,7 +139,7 @@ function createTexturedRing(data) {
         map: textureLoader.load(ringTexPath),
         transparent: true,
         opacity: 0.9,
-        side: THREE.DoubleSide, // FIXED: Viewable from both sides
+        side: THREE.DoubleSide,
         depthWrite: false
     });
     const mesh = new THREE.Mesh(geometry, material);
@@ -104,7 +147,6 @@ function createTexturedRing(data) {
     return mesh;
 }
 
-// NEW: Uranus's vertical particle rings
 function createParticleRing(data) {
     const particles = 1000;
     const geometry = new THREE.BufferGeometry();
@@ -117,11 +159,10 @@ function createParticleRing(data) {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({ color: 0x88ccff, size: 0.05, transparent: true, opacity: 0.5 });
     const points = new THREE.Points(geometry, material);
-    points.rotation.y = Math.PI / 2; // Tilt it vertically for Uranus
+    points.rotation.y = Math.PI / 2; 
     return points;
 }
 
-// NEW: Comet Tail
 function createCometTail(mesh) {
     const particles = 200;
     const geometry = new THREE.BufferGeometry();
@@ -144,6 +185,9 @@ function createSunFlares(sunMesh) {
     return flareMesh;
 }
 
+/**
+ * Master Build Function
+ */
 export function buildSystem(scene, systemData) {
     const objects = [];
     
@@ -180,7 +224,7 @@ export function buildSystem(scene, systemData) {
         }
 
         if (data.name === "Saturn") mesh.add(createTexturedRing(data));
-        if (data.name === "Uranus") mesh.add(createParticleRing(data)); // FIXED: Uranus Rings
+        if (data.name === "Uranus") mesh.add(createParticleRing(data));
 
         mesh.userData = data;
         group.add(mesh);
@@ -192,19 +236,19 @@ export function buildSystem(scene, systemData) {
             angle: Math.random() * Math.PI * 2, moons: [] 
         };
 
-        if (data.type === "COMET") planetObj.tail = createCometTail(mesh); // FIXED: Comet Tail
+        if (data.type === "COMET") planetObj.tail = createCometTail(mesh);
 
         if (data.moons) {
             data.moons.forEach((moonData) => {
                 const moonMesh = new THREE.Mesh(
                     new THREE.SphereGeometry(moonData.size, 32, 32),
-                    new THREE.MeshStandardMaterial({ map: moonData.textureUrl ? textureLoader.load(moonData.textureUrl) : null, color: moonData.color })
+                    new THREE.MeshStandardMaterial({ 
+                        map: moonData.textureUrl ? textureLoader.load(moonData.textureUrl) : null, 
+                        color: moonData.color 
+                    })
                 );
-                const moonPivot = new THREE.Group();
-                mesh.add(moonPivot);
-                moonMesh.position.set(moonData.distance, 0, 0);
-                moonPivot.add(moonMesh);
-                planetObj.moons.push({ mesh: moonMesh, pivot: moonPivot, data: moonData, angle: Math.random() * Math.PI * 2 });
+                mesh.add(moonMesh);
+                planetObj.moons.push({ mesh: moonMesh, data: moonData, angle: Math.random() * Math.PI * 2 });
             });
         }
         objects.push(planetObj);

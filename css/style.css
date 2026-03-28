@@ -42,3 +42,12 @@ body { margin: 0; overflow: hidden; background-color: #020205; color: white; }
         mask-image: linear-gradient(to right, black 85%, transparent 100%);
     }
 }
+.loader-finished {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Ensure progress bar transition is smooth */
+#progress-bar {
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
