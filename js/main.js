@@ -28,7 +28,7 @@ let focusedObject = null;
 const targetCameraPosition = new THREE.Vector3();
 targetCameraPosition.copy(camera.position);
 
-// Flag to track user interaction
+// Interaction Flag
 let isUserInteracting = false;
 controls.addEventListener('start', () => { isUserInteracting = true; });
 controls.addEventListener('end', () => { isUserInteracting = false; });
@@ -75,12 +75,12 @@ window.addEventListener('resize', handleResize);
 function animate() {
     requestAnimationFrame(animate);
     
-    // 1. Smooth camera movement - ONLY if the user isn't manually rotating
+    // 1. Smooth camera movement
     if (!isUserInteracting) {
         camera.position.lerp(targetCameraPosition, CONFIG.smoothness);
     }
 
-    // --- PAN LIMITER ---
+    // --- PAN LIMITER (Kuiper Belt Boundary) ---
     const PAN_LIMIT = 3500; 
     const target = controls.target;
     if (target.length() > PAN_LIMIT) {
@@ -112,7 +112,7 @@ function animate() {
             if (obj.data.name === "Sun") obj.mesh.rotation.y += 0.001;
             else obj.mesh.rotation.y += spinBase;
 
-            // Comet Tail
+            // Comet Tail Realism
             if (obj.type === 'comet' && obj.tail) {
                 const posAttr = obj.tail.geometry.attributes.position;
                 for (let i = 0; i < posAttr.count; i++) {
@@ -141,15 +141,14 @@ function animate() {
         }
     });
 
-    // 2. Dynamic Camera Tracking (Stickiness)
+    // 2. Dynamic Camera Tracking
     if (focusedObject && focusedObject.type !== 'belt') {
         const worldPos = new THREE.Vector3();
         focusedObject.mesh.getWorldPosition(worldPos);
         
-        // Stick the orbit pivot to the moving planet
+        // Pivot follows planet
         controls.target.copy(worldPos); 
         
-        // Update the autopilot target position based on planet's new location
         const dist = 15 + (focusedObject.data.size * CONFIG.zoomFactor);
         const relativeOffset = new THREE.Vector3(dist, dist * 0.4, dist);
         
