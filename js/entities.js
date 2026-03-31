@@ -10,17 +10,29 @@ const TEXTURE_MAP = {
     "Sun": TEX_PATH + "2k_sun.jpg",
     "Mercury": TEX_PATH + "2k_mercury.jpg",
     "Venus": TEX_PATH + "2k_venus.jpg",
+    "Earth": TEX_PATH + "2k_earth_daymap.jpg",
+    "Mars": TEX_PATH + "2k_mars.jpg",
     "Jupiter": TEX_PATH + "2k_jupiter.jpg",
     "Saturn": TEX_PATH + "2k_saturn.jpg",
     "Uranus": TEX_PATH + "2k_uranus.jpg",
     "Neptune": TEX_PATH + "2k_neptune.jpg",
-    "Mars": TEX_PATH + "2k_mars.jpg",
+    "Pluto": TEX_PATH + "2k_pluto.jpg",
     "Ceres": TEX_PATH + "2k_ceres_fictional.jpg",
     "Eris": TEX_PATH + "2k_eris_fictional.jpg",
     "Haumea": TEX_PATH + "2k_haumea_fictional.jpg",
     "Makemake": TEX_PATH + "2k_makemake_fictional.jpg",
+    "Sedna": TEX_PATH + "2k_sedna.jpg",
     "Saturn_Ring": TEX_PATH + "2k_saturn_ring_alpha.png"
 };
+
+// Texture Cache to prevent re-loading
+const textureCache = {};
+Object.entries(TEXTURE_MAP).forEach(([key, path]) => {
+    const tex = textureLoader.load(path);
+    // Improve visual quality for skewed angles
+    tex.anisotropy = 16; 
+    textureCache[key] = tex;
+});
 
 /**
  * Distant Starfield
@@ -82,11 +94,7 @@ export function createOortCloud(scene) {
 
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({
-        size: 2,
-        color: color,
-        transparent: true,
-        opacity: 0.15,
-        blending: THREE.AdditiveBlending
+        size: 2, color: color, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending
     });
 
     const cloud = new THREE.Points(geometry, material);
@@ -94,35 +102,59 @@ export function createOortCloud(scene) {
     return cloud;
 }
 
+/**
+ * Real Elliptical Orbit Lines
+ */
 function createOrbitLine(data) {
     const points = [];
     const segments = 128;
-    const a = data.distance; 
-    const e = data.eccentricity || 0;
+    const visualScale = data.distance; 
+    const e = data.elements?.eccentricity || 0;
     
     for (let i = 0; i <= segments; i++) {
         const theta = (i / segments) * Math.PI * 2;
-        const r = (a * (1 - e * e)) / (1 + e * Math.cos(theta));
+        const r = (visualScale * (1 - e * e)) / (1 + e * Math.cos(theta));
         points.push(new THREE.Vector3(Math.cos(theta) * r, 0, Math.sin(theta) * r));
     }
     
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08 });
+    const material = new THREE.LineBasicMaterial({ 
+        color: 0x444466, 
+        transparent: true, 
+        opacity: 0.2, 
+        blending: THREE.AdditiveBlending,
+        depthWrite: false // CRITICAL: Fixes orbit-planet clipping
+    });
+
     const line = new THREE.Line(geometry, material);
-    if (data.inclination) line.rotation.x = data.inclination;
-    return line;
+    const orbitGroup = new THREE.Group();
+    orbitGroup.add(line);
+
+    if (data.elements?.inclination) {
+        orbitGroup.rotation.x = data.elements.inclination * (Math.PI / 180);
+    }
+    
+    return orbitGroup;
 }
 
 function createBeltMesh(data) {
     const geometry = new THREE.DodecahedronGeometry(data.name === 'Kuiper Belt' ? 0.6 : 0.3, 0);
-    const material = new THREE.MeshStandardMaterial({ color: data.color, emissive: data.color, emissiveIntensity: 0.5 });
+    const material = new THREE.MeshStandardMaterial({ 
+        color: data.color, 
+        emissive: data.color, 
+        emissiveIntensity: 0.3 
+    });
     const mesh = new THREE.InstancedMesh(geometry, material, data.count);
     const dummy = new THREE.Object3D();
 
     for (let i = 0; i < data.count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const r = data.innerRadius + Math.random() * (data.outerRadius - data.innerRadius);
-        dummy.position.set(Math.cos(angle) * r, THREE.MathUtils.randFloatSpread(data.name === 'Kuiper Belt' ? 12 : 3), Math.sin(angle) * r);
+        dummy.position.set(
+            Math.cos(angle) * r, 
+            THREE.MathUtils.randFloatSpread(data.name === 'Kuiper Belt' ? 12 : 3), 
+            Math.sin(angle) * r
+        );
         dummy.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
         const scale = Math.random() * 0.6 + 0.4;
         dummy.scale.set(scale, scale, scale);
@@ -134,11 +166,10 @@ function createBeltMesh(data) {
 
 function createTexturedRing(data) {
     const geometry = new THREE.RingGeometry(data.size * 1.4, data.size * 2.5, 64);
-    const ringTexPath = (data.name === "Saturn") ? TEXTURE_MAP["Saturn_Ring"] : data.ringTextureUrl;
     const material = new THREE.MeshStandardMaterial({
-        map: textureLoader.load(ringTexPath),
+        map: textureCache["Saturn_Ring"],
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.8,
         side: THREE.DoubleSide,
         depthWrite: false
     });
@@ -157,7 +188,12 @@ function createParticleRing(data) {
         positions.push(Math.cos(angle) * r, Math.sin(angle) * r, 0);
     }
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({ color: 0x88ccff, size: 0.05, transparent: true, opacity: 0.5 });
+    const material = new THREE.PointsMaterial({ 
+        color: 0x88ccff, 
+        size: 0.05, 
+        transparent: true, 
+        opacity: 0.4 
+    });
     const points = new THREE.Points(geometry, material);
     points.rotation.y = Math.PI / 2; 
     return points;
@@ -168,7 +204,13 @@ function createCometTail(mesh) {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particles * 3);
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({ color: 0xaaaaff, size: 0.1, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending });
+    const material = new THREE.PointsMaterial({ 
+        color: 0xaaaaff, 
+        size: 0.1, 
+        transparent: true, 
+        opacity: 0.4, 
+        blending: THREE.AdditiveBlending 
+    });
     const tail = new THREE.Points(geometry, material);
     mesh.add(tail);
     return tail;
@@ -177,7 +219,7 @@ function createCometTail(mesh) {
 function createSunFlares(sunMesh) {
     const flareGeo = new THREE.SphereGeometry(sunMesh.geometry.parameters.radius * 1.05, 64, 64);
     const flareMat = new THREE.MeshBasicMaterial({
-        color: 0xffaa00, transparent: true, opacity: 0.3,
+        color: 0xffaa00, transparent: true, opacity: 0.2,
         blending: THREE.AdditiveBlending, side: THREE.BackSide, fog: false 
     });
     const flareMesh = new THREE.Mesh(flareGeo, flareMat);
@@ -204,24 +246,30 @@ export function buildSystem(scene, systemData) {
 
         const geometry = new THREE.SphereGeometry(data.size, 64, 64);
         let mesh;
-        const activeTextureUrl = TEXTURE_MAP[data.name] || data.textureUrl;
 
         if (data.name === "Sun") {
             mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ 
-                map: textureLoader.load(activeTextureUrl), color: 0xffffff, fog: false 
+                map: textureCache["Sun"], color: 0xffffff, fog: false 
             }));
             createSunFlares(mesh);
         } else {
             const mat = new THREE.MeshStandardMaterial({
                 roughness: 0.8, metalness: 0.1,
-                emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.15 
+                emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.1 
             });
-            if (activeTextureUrl) {
-                const tex = textureLoader.load(activeTextureUrl);
-                mat.map = tex; mat.emissiveMap = tex; 
-            } else { mat.color = new THREE.Color(data.color); }
+            
+            const tex = textureCache[data.name];
+            if (tex) {
+                mat.map = tex; 
+                mat.emissiveMap = tex; 
+            } else { 
+                mat.color = new THREE.Color(data.color); 
+            }
             mesh = new THREE.Mesh(geometry, mat);
         }
+
+        // STABILITY FIX: Keep rendering even when zoomed in tight
+        mesh.frustumCulled = false;
 
         if (data.name === "Saturn") mesh.add(createTexturedRing(data));
         if (data.name === "Uranus") mesh.add(createParticleRing(data));
@@ -243,7 +291,6 @@ export function buildSystem(scene, systemData) {
                 const moonMesh = new THREE.Mesh(
                     new THREE.SphereGeometry(moonData.size, 32, 32),
                     new THREE.MeshStandardMaterial({ 
-                        map: moonData.textureUrl ? textureLoader.load(moonData.textureUrl) : null, 
                         color: moonData.color 
                     })
                 );

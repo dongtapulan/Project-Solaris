@@ -80,5 +80,19 @@
     </div>
 </div>
     <script type="module" src="js/main.js"></script>
+    <div class="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 bg-black/40 backdrop-blur-md px-8 py-3 rounded-2xl border border-white/10 shadow-2xl">
+    <div class="flex items-center gap-4">
+        <button id="btn-rewind" class="text-gray-400 hover:text-blue-400 transition-all active:scale-90 text-xl">⏪</button>
+        <button id="btn-pause" class="text-white hover:text-yellow-400 transition-all text-3xl w-10">⏸</button>
+        <button id="btn-forward" class="text-gray-400 hover:text-blue-400 transition-all active:scale-90 text-xl">⏩</button>
+    </div>
+
+    <div class="h-8 w-[1px] bg-white/10"></div>
+
+    <div class="flex flex-col items-start min-w-[100px]">
+        <span class="text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold">Temporal Velocity</span>
+        <span id="speed-display" class="font-mono text-blue-400 text-sm">100,000x</span>
+    </div>
+</div>
 </body>
 </html>

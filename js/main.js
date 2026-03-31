@@ -5,9 +5,15 @@ import { scene, camera, renderer, handleResize } from './scene.js';
 import { createStars, createOortCloud, buildSystem, loadingManager } from './entities.js';
 import { initUI, updatePanel } from './ui.js';
 import { initLoader } from './loader.js';
+import { TimeEngine } from './utils/time.js'; 
 
 // 1. Initialize Loading Screen
 initLoader(loadingManager);
+
+// 2. Initialize the Master Clock
+const timeEngine = new TimeEngine();
+// DEFAULT VELOCITY: Starting at 1x (Real-time)
+timeEngine.timeScale = 1; 
 
 // Append renderer to the DOM
 document.getElementById('canvas-container').appendChild(renderer.domElement);
@@ -16,19 +22,17 @@ document.getElementById('canvas-container').appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.maxDistance = 6000; 
+controls.maxDistance = 8000; 
 controls.enablePan = true;
 
-// 2. Initialize System Entities
+// 3. Initialize System Entities
 createStars(scene);
 const oortCloud = createOortCloud(scene); 
 const objects = buildSystem(scene, SYSTEM_DATA);
 
 let focusedObject = null;
-const targetCameraPosition = new THREE.Vector3();
-targetCameraPosition.copy(camera.position);
+const targetCameraPosition = new THREE.Vector3(0, 400, 800);
 
-// Interaction Flag
 let isUserInteracting = false;
 controls.addEventListener('start', () => { isUserInteracting = true; });
 controls.addEventListener('end', () => { isUserInteracting = false; });
@@ -44,121 +48,122 @@ function focusOn(planetName) {
     updatePanel(target.data);
 
     if (target.data.type === 'BELT') {
-        const dist = target.data.outerRadius;
-        targetCameraPosition.set(0, dist * 1.3, dist * 0.9);
+        // For Belts: Set a static overhead view to prevent the "Black Screen" crash
+        const dist = target.data.outerRadius || 500;
+        targetCameraPosition.set(0, dist * 1.5, dist * 1.2);
         controls.target.set(0, 0, 0); 
     } else {
+        // For Planets: Calculate initial snap position
         const worldPos = new THREE.Vector3();
         target.mesh.getWorldPosition(worldPos);
-        const offset = 15 + (target.data.size * CONFIG.zoomFactor);
-        targetCameraPosition.set(worldPos.x + offset, worldPos.y + offset * 0.6, worldPos.z + offset);
+        const offset = 20 + (target.data.size * (CONFIG.zoomFactor || 5));
+        targetCameraPosition.set(worldPos.x + offset, worldPos.y + offset * 0.5, worldPos.z + offset);
         controls.target.copy(worldPos);
     }
 }
 
 function resetView() {
     focusedObject = null;
-    targetCameraPosition.set(0, 400, 800); 
+    targetCameraPosition.set(0, 500, 1000); 
     controls.target.set(0, 0, 0);
     updatePanel(SYSTEM_DATA[0]);
 }
 
-// Wire up UI
-initUI(SYSTEM_DATA, focusOn, resetView);
+// Initialize UI with updated callbacks
+initUI(SYSTEM_DATA, focusOn, resetView, timeEngine);
 updatePanel(SYSTEM_DATA[0]);
 
 window.addEventListener('resize', handleResize);
 
+let lastTime = 0;
+
 /**
  * Main Animation Loop
  */
-function animate() {
+function animate(currentTime) {
     requestAnimationFrame(animate);
-    
-    // 1. Smooth camera movement
-    if (!isUserInteracting) {
-        camera.position.lerp(targetCameraPosition, CONFIG.smoothness);
-    }
 
-    // --- PAN LIMITER (Kuiper Belt Boundary) ---
-    const PAN_LIMIT = 3500; 
-    const target = controls.target;
-    if (target.length() > PAN_LIMIT) {
-        target.setLength(PAN_LIMIT);
-    }
+    const deltaTime = (currentTime - lastTime) / 1000 || 0;
+    lastTime = currentTime;
 
-    // Subtle Oort Cloud Drift
-    if (oortCloud) {
-        oortCloud.rotation.y += 0.00002;
-    }
+    timeEngine.update(deltaTime);
 
+    // 1. Update Celestial Positions & Physics
     objects.forEach(obj => {
         if (obj.type === 'belt') {
-            obj.mesh.rotation.y += obj.data.speed * 0.2; 
-        } else {
-            // Orbital Movement
-            if (obj.data.distance > 0) {
-                const a = obj.data.distance;
-                const e = obj.data.eccentricity || 0;
-                obj.angle += obj.data.speed * CONFIG.rotationSpeed;
-                const r = (a * (1 - e * e)) / (1 + e * Math.cos(obj.angle));
-                obj.mesh.position.x = Math.cos(obj.angle) * r;
-                obj.mesh.position.z = Math.sin(obj.angle) * r;
-                if (obj.data.inclination) obj.group.rotation.x = obj.data.inclination;
+            obj.mesh.rotation.y += (obj.data.speed || 0.0005) * (timeEngine.timeScale / 1000) * deltaTime; 
+        } else if (obj.data.elements) {
+            const centuries = timeEngine.getCenturiesSinceEpoch();
+            const days = centuries * 36525.0;
+            const { semiMajorAxis, eccentricity, meanLong, inclination } = obj.data.elements;
+
+            const n = 0.9856076686 / Math.sqrt(Math.pow(semiMajorAxis, 3));
+            let M = (meanLong + n * days) % 360;
+            let radM = M * (Math.PI / 180);
+
+            let E = radM;
+            for(let i = 0; i < 3; i++) {
+                E = E + (radM - (E - eccentricity * Math.sin(E))) / (1 - eccentricity * Math.cos(E));
             }
 
-            // Axial Rotation
-            const spinBase = 0.002; 
-            if (obj.data.name === "Sun") obj.mesh.rotation.y += 0.001;
-            else obj.mesh.rotation.y += spinBase;
+            const visualScale = obj.data.distance; 
+            const xOrtho = (Math.cos(E) - eccentricity) * visualScale;
+            const zOrtho = (Math.sqrt(1 - eccentricity * eccentricity) * Math.sin(E)) * visualScale;
 
-            // Comet Tail Realism
-            if (obj.type === 'comet' && obj.tail) {
-                const posAttr = obj.tail.geometry.attributes.position;
-                for (let i = 0; i < posAttr.count; i++) {
-                    let x = posAttr.getX(i);
-                    x -= Math.random() * 0.4;
-                    if (x < -25) x = 0; 
-                    posAttr.setX(i, x);
-                }
-                posAttr.needsUpdate = true;
-                const worldPos = new THREE.Vector3();
-                obj.mesh.getWorldPosition(worldPos);
-                const sunToComet = worldPos.clone().normalize();
-                obj.tail.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), sunToComet);
+            obj.mesh.position.set(xOrtho, 0, zOrtho);
+
+            if (inclination) {
+                obj.group.rotation.x = inclination * (Math.PI / 180);
             }
 
-            // Moon Animation
+            // Smooth Axial Rotation
+            const rotationBase = (obj.data.rotationSpeed || 0.01);
+            obj.mesh.rotation.y += rotationBase * (timeEngine.timeScale / 100) * deltaTime;
+
             if (obj.moons) {
                 obj.moons.forEach(moon => {
-                    moon.angle += moon.data.speed * CONFIG.rotationSpeed;
+                    moon.angle += (moon.data.speed || 0.04) * (timeEngine.timeScale / 1000) * deltaTime;
                     const mr = moon.data.distance;
-                    moon.mesh.position.x = Math.cos(moon.angle) * mr;
-                    moon.mesh.position.z = Math.sin(moon.angle) * mr;
-                    moon.mesh.rotation.y += 0.01;
+                    moon.mesh.position.set(Math.cos(moon.angle) * mr, 0, Math.sin(moon.angle) * mr);
                 });
             }
         }
     });
 
-    // 2. Dynamic Camera Tracking
-    if (focusedObject && focusedObject.type !== 'belt') {
+    // 2. STABILIZED Camera Tracking
+    if (focusedObject && focusedObject.data.type !== 'BELT') {
         const worldPos = new THREE.Vector3();
         focusedObject.mesh.getWorldPosition(worldPos);
         
-        // Pivot follows planet
         controls.target.copy(worldPos); 
         
-        const dist = 15 + (focusedObject.data.size * CONFIG.zoomFactor);
-        const relativeOffset = new THREE.Vector3(dist, dist * 0.4, dist);
-        
         if (!isUserInteracting) {
-            targetCameraPosition.copy(worldPos).add(relativeOffset);
+            const zoomDist = 20 + (focusedObject.data.size * (CONFIG.zoomFactor || 5));
+            const idealPos = new THREE.Vector3().copy(worldPos);
+            idealPos.x += zoomDist;
+            idealPos.y += zoomDist * 0.5;
+            idealPos.z += zoomDist;
+
+            camera.position.lerp(idealPos, CONFIG.smoothness || 0.05);
+        }
+    } else if (!isUserInteracting) {
+        // Smooth transition for Reset or Belt views
+        camera.position.lerp(targetCameraPosition, CONFIG.smoothness || 0.05);
+        if (focusedObject && focusedObject.data.type === 'BELT') {
+            controls.target.lerp(new THREE.Vector3(0,0,0), 0.05);
         }
     }
+
+    // Constraints
+    const PAN_LIMIT = 5000; 
+    if (controls.target.length() > PAN_LIMIT) {
+        controls.target.setLength(PAN_LIMIT);
+    }
+
+    if (oortCloud) oortCloud.rotation.y += 0.00002;
 
     controls.update();
     renderer.render(scene, camera);
 }
 
-animate();
+animate(performance.now());
