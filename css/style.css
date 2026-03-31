@@ -1,53 +1,115 @@
-body { margin: 0; overflow: hidden; background-color: #020205; color: white; }
-#canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 0; }
+/* * PROJECT SOLARIS: CORE STYLING
+ *
+ */
 
-::-webkit-scrollbar { width: 4px; height: 4px; } /* Added height for horizontal scroll */
-::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.3); border-radius: 2px; }
-
-.glass {
-    background: rgba(10, 10, 15, 0.75);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+/* Core Layout */
+body { 
+    margin: 0; 
+    overflow: hidden; 
+    background-color: #020205; 
+    color: white; 
+    user-select: none;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+#canvas-container { 
+    width: 100vw; 
+    height: 100vh; 
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    z-index: 0; 
+}
+
+/* Glass-morphism Base */
+.glass {
+    background: rgba(10, 10, 15, 0.75);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+/* Telemetry HUD - Fixed to top right */
+#telemetry-hud {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    width: 240px;
+    padding: 1.25rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 12px;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 10px;
+    color: rgba(147, 197, 253, 0.9);
+    z-index: 100;
+    pointer-events: auto;
+}
+
+/* Info Panel - Stacks BELOW Telemetry */
+#info-panel {
+    position: absolute;
+    top: 13rem; /* Pushes it below the Telemetry box */
+    right: 1.5rem;
+    width: 360px;
+    z-index: 90;
+    pointer-events: auto;
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.3); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.6); }
+
+/* Interactive Planet List */
 .planet-btn {
-    transition: all 0.2s ease;
-    white-space: nowrap; /* Prevents text wrapping on mobile */
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .planet-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    transform: translateX(4px);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(8px);
 }
 
-/* Mobile Specific Tweaks */
+/* Mobile Compatibility */
 @media (max-width: 768px) {
-    .planet-btn:hover {
-        transform: none; /* Disable side-slide on touch */
-    }
-    
-    #info-panel {
-        right: 5% !important;
-        left: 5% !important;
-        width: 90% !important;
-        bottom: 120px !important; /* Move up to clear the planet list */
+    #telemetry-hud {
+        top: 1rem;
+        right: 1rem;
+        width: calc(100% - 2rem);
+        max-width: 280px;
+        background: rgba(0, 0, 0, 0.85);
     }
 
-    /* Make the horizontal planet list smoother */
+    #info-panel {
+        top: auto;
+        bottom: 140px;
+        right: 1rem;
+        left: 1rem;
+        width: auto;
+        transform: none !important;
+    }
+
     #planet-list-container {
-        padding-bottom: 8px;
         mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        background: transparent !important;
+        border: none !important;
+        backdrop-filter: none !important;
+    }
+
+    .planet-btn:hover {
+        transform: none;
     }
 }
-.loader-finished {
+
+/* Loader Transitions */
+#loader-overlay.loader-finished {
     opacity: 0;
     pointer-events: none;
-}
-
-/* Ensure progress bar transition is smooth */
-#progress-bar {
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+    transition: opacity 1.2s ease-out;
 }
