@@ -6,7 +6,7 @@ import { createStars, createOortCloud, buildSystem, loadingManager } from './ent
 import { initUI, updatePanel } from './ui.js';
 import { initLoader } from './loader.js';
 import { TimeEngine } from './utils/time.js'; 
-import { fetchSolarWeather } from './utils/telemetry.js';
+import { fetchSolarWeather, fetchNEOs } from './utils/telemetry.js';
 
 // 1. Initialize Loading Screen
 initLoader(loadingManager);
@@ -25,10 +25,11 @@ controls.dampingFactor = 0.05;
 controls.maxDistance = 8000; 
 controls.enablePan = true;
 
-// 3. Initialize System Entities
+// 3. Initialize System Entities 
+// FIX: Pass 'camera' to buildSystem for the atmosphere shaders to work
 createStars(scene);
 const oortCloud = createOortCloud(scene); 
-const objects = buildSystem(scene, SYSTEM_DATA);
+const objects = buildSystem(scene, SYSTEM_DATA, camera);
 
 let focusedObject = null;
 const targetCameraPosition = new THREE.Vector3(0, 500, 1000);
@@ -38,9 +39,10 @@ controls.addEventListener('start', () => { isUserInteracting = true; });
 controls.addEventListener('end', () => { isUserInteracting = false; });
 
 /**
- * Live Data Fetching (NASA Telemetry)
+ * Live Data Fetching (NASA Telemetry: Solar & NEO)
  */
-async function updateSolarStatus() {
+async function updateTelemetry() {
+    // A. Solar Weather (CME)
     const solarData = await fetchSolarWeather();
     const cmeElement = document.getElementById('telemetry-cme');
     if (solarData && cmeElement) {
@@ -48,13 +50,27 @@ async function updateSolarStatus() {
         cmeElement.innerText = isSafe ? "NOMINAL" : "ACTIVITY DETECTED";
         cmeElement.style.color = isSafe ? "#4ade80" : "#f87171";
     }
+
+    // B. Near-Earth Objects (Asteroid Radar)
+    const neoData = await fetchNEOs();
+    const neoElement = document.getElementById('telemetry-neo');
+    if (neoElement) {
+        if (neoData && neoData.length > 0) {
+            neoElement.innerText = `${neoData.length} HAZARDOUS DETECTED`;
+            neoElement.style.color = "#f87171";
+        } else {
+            neoElement.innerText = "LOCAL SPACE CLEAR";
+            neoElement.style.color = "#4ade80";
+        }
+    }
 }
-updateSolarStatus();
-setInterval(updateSolarStatus, 300000);
+
+// Initial pull and setup interval
+updateTelemetry();
+setInterval(updateTelemetry, 300000); // Update every 5 minutes
 
 /**
  * Enhanced Camera focus logic
- * Handles static overhead views for Belts and dynamic tracking for Planets
  */
 function focusOn(planetName) {
     const target = objects.find(o => o.data.name === planetName);
@@ -64,12 +80,10 @@ function focusOn(planetName) {
     updatePanel(target.data);
 
     if (target.data.type === 'BELT') {
-        // FIX: For Belts, we set a fixed high-angle overview to prevent clipping/black screen
         const dist = target.data.outerRadius || 500;
         targetCameraPosition.set(0, dist * 1.2, dist * 1.5);
-        controls.target.set(0, 0, 0); // Focus on system center for belts
+        controls.target.set(0, 0, 0); 
     } else {
-        // Standard Planet Snap
         const worldPos = new THREE.Vector3();
         target.mesh.getWorldPosition(worldPos);
         
@@ -83,7 +97,7 @@ function resetView() {
     focusedObject = null;
     targetCameraPosition.set(0, 500, 1000); 
     controls.target.set(0, 0, 0);
-    updatePanel(SYSTEM_DATA[0]); // Reset to Sun info
+    updatePanel(SYSTEM_DATA[0]); 
 }
 
 initUI(SYSTEM_DATA, focusOn, resetView, timeEngine);
@@ -104,7 +118,12 @@ function animate(currentTime) {
 
     timeEngine.update(deltaTime);
 
-    // 1. Update Celestial Positions & Physics
+    // 1. Find Earth for Distance Calculations
+    const earthObj = objects.find(o => o.data.name === "Earth");
+    const earthPos = new THREE.Vector3();
+    if(earthObj) earthObj.mesh.getWorldPosition(earthPos);
+
+    // 2. Update Celestial Positions & Physics
     objects.forEach(obj => {
         if (obj.type === 'belt') {
             obj.mesh.rotation.y += (obj.data.speed || 0.0005) * (timeEngine.timeScale / 1000) * deltaTime; 
@@ -117,7 +136,6 @@ function animate(currentTime) {
             let M = (meanLong + n * days) % 360;
             let radM = M * (Math.PI / 180);
 
-            // Kepler solver
             let E = radM;
             for(let i = 0; i < 3; i++) {
                 E = E + (radM - (E - eccentricity * Math.sin(E))) / (1 - eccentricity * Math.cos(E));
@@ -136,7 +154,6 @@ function animate(currentTime) {
             const rotationBase = (obj.data.rotationSpeed || 0.01);
             obj.mesh.rotation.y += rotationBase * (timeEngine.timeScale / 100) * deltaTime;
 
-            // Moon Logic
             if (obj.moons) {
                 obj.moons.forEach(moon => {
                     moon.angle += (moon.data.speed || 0.04) * (timeEngine.timeScale / 1000) * deltaTime;
@@ -147,7 +164,7 @@ function animate(currentTime) {
         }
     });
 
-    // 2. HUD & TELEMETRY
+    // 3. HUD, TELEMETRY & SPEED OF LIGHT
     const dateEl = document.getElementById('telemetry-date');
     if (dateEl) dateEl.innerText = timeEngine.getFormattedTime();
 
@@ -155,15 +172,28 @@ function animate(currentTime) {
         const worldPos = new THREE.Vector3();
         focusedObject.mesh.getWorldPosition(worldPos);
         
-        // 3. BELT-SPECIFIC CAMERA HANDLING
+        // --- PRO SCALE: Light-Time Delay Calculation ---
+        const delayEl = document.getElementById('telemetry-delay');
+        if (delayEl && earthObj) {
+            if (focusedObject.data.name === "Earth") {
+                delayEl.innerText = "INSTANTANEOUS";
+            } else {
+                // Earth is scale-positioned at ~90 visual units
+                const distanceInAU = earthPos.distanceTo(worldPos) / 90; 
+                const lightSeconds = distanceInAU * 499; 
+                
+                const mins = Math.floor(lightSeconds / 60);
+                const secs = Math.floor(lightSeconds % 60);
+                delayEl.innerText = `${mins}m ${secs}s`;
+            }
+        }
+
         if (focusedObject.data.type === 'BELT') {
-            // Smoothly move to fixed overhead position for belts
             if (!isUserInteracting) {
                 camera.position.lerp(targetCameraPosition, CONFIG.smoothness || 0.05);
                 controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.05);
             }
         } else {
-            // Standard Planet Tracking
             controls.target.copy(worldPos); 
             
             if (!isUserInteracting) {
@@ -177,18 +207,15 @@ function animate(currentTime) {
             }
         }
 
-        // Live HUD Coordinates
         const coordEl = document.getElementById('target-coords');
         if (coordEl) {
             coordEl.innerText = `X: ${worldPos.x.toFixed(3)} | Z: ${worldPos.z.toFixed(3)} (AU)`;
         }
     } else if (!isUserInteracting) {
-        // Global Overview LERP
         camera.position.lerp(targetCameraPosition, CONFIG.smoothness || 0.05);
         controls.target.lerp(new THREE.Vector3(0,0,0), 0.05);
     }
 
-    // Safety Pan Limit
     const PAN_LIMIT = 5000; 
     if (controls.target.length() > PAN_LIMIT) {
         controls.target.setLength(PAN_LIMIT);

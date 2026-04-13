@@ -1,115 +1,129 @@
-/* * PROJECT SOLARIS: CORE STYLING
- *
- */
+:root {
+    --accent-blue: #3b82f6;
+    --accent-indigo: #6366f1;
+    --panel-bg: rgba(7, 7, 10, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-glow: rgba(99, 102, 241, 0.15);
+}
 
-/* Core Layout */
 body { 
     margin: 0; 
-    overflow: hidden; 
     background-color: #020205; 
     color: white; 
-    user-select: none;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
 }
 
-#canvas-container { 
-    width: 100vw; 
-    height: 100vh; 
-    position: absolute; 
-    top: 0; 
-    left: 0; 
-    z-index: 0; 
-}
-
-/* Glass-morphism Base */
+/* Glass Effect Re-applied */
 .glass {
-    background: rgba(10, 10, 15, 0.75);
+    background: var(--panel-bg);
     backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), inset 0 0 32px var(--glass-glow);
 }
 
-/* Telemetry HUD - Fixed to top right */
-#telemetry-hud {
+/* --- TOP NAVIGATION BAR --- */
+.top-nav-container {
     position: absolute;
-    top: 1.5rem;
-    right: 1.5rem;
-    width: 240px;
-    padding: 1.25rem;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 12px;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    font-size: 10px;
-    color: rgba(147, 197, 253, 0.9);
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 1.5rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     z-index: 100;
-    pointer-events: auto;
 }
 
-/* Info Panel - Stacks BELOW Telemetry */
-#info-panel {
+.glass-nav {
+    display: flex;
+    align-items: center;
+    background: rgba(7, 7, 10, 0.5);
+    backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 100px;
+    padding: 0.6rem 1.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    transition: all 0.5s ease;
+}
+
+/* Entry Animation */
+.animate-in {
+    animation: slideDown 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    padding: 0 1.5rem;
+}
+
+.nav-label {
+    font-size: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.25em;
+    color: rgba(255, 255, 255, 0.3);
+    margin-bottom: 2px;
+}
+
+.nav-value {
+    font-size: 11px;
+    color: white;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.nav-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* --- SIDEBAR --- */
+.sidebar-right {
     position: absolute;
-    top: 13rem; /* Pushes it below the Telemetry box */
-    right: 1.5rem;
-    width: 360px;
-    z-index: 90;
-    pointer-events: auto;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.3); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.6); }
-
-/* Interactive Planet List */
-.planet-btn {
-    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-.planet-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    transform: translateX(8px);
-}
-
-/* Mobile Compatibility */
-@media (max-width: 768px) {
-    #telemetry-hud {
-        top: 1rem;
-        right: 1rem;
-        width: calc(100% - 2rem);
-        max-width: 280px;
-        background: rgba(0, 0, 0, 0.85);
-    }
-
-    #info-panel {
-        top: auto;
-        bottom: 140px;
-        right: 1rem;
-        left: 1rem;
-        width: auto;
-        transform: none !important;
-    }
-
-    #planet-list-container {
-        mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        background: transparent !important;
-        border: none !important;
-        backdrop-filter: none !important;
-    }
-
-    .planet-btn:hover {
-        transform: none;
-    }
-}
-
-/* Loader Transitions */
-#loader-overlay.loader-finished {
-    opacity: 0;
+    top: 7.5rem; 
+    right: 2.5rem;
+    width: 400px;
     pointer-events: none;
-    transition: opacity 1.2s ease-out;
+    z-index: 90;
+}
+
+#info-panel {
+    width: 100%;
+    max-height: calc(100vh - 14rem);
+    overflow-y: auto;
+    pointer-events: auto;
+    scrollbar-width: none;
+    transition: opacity 0.4s ease;
+}
+
+#info-panel::-webkit-scrollbar { display: none; }
+
+/* Status Text Effects */
+.text-green-400 { color: #4ade80; text-shadow: 0 0 10px rgba(74, 222, 128, 0.4); }
+.text-blue-300 { color: #93c5fd; text-shadow: 0 0 10px rgba(147, 197, 253, 0.4); }
+
+/* Planet List Custom Scrollbar */
+#planet-list-container::-webkit-scrollbar {
+    width: 4px;
+}
+#planet-list-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+/* Hover States */
+.planet-btn {
+    transition: all 0.3s ease;
+}
+.planet-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    transform: translateX(5px);
 }

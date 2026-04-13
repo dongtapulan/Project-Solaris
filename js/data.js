@@ -164,7 +164,21 @@ export const SYSTEM_DATA = [
             longitudePeri: 238.7
         },
         obliquity: 126.0,
+        textureUrl: "assets/textures/2k_haumea_fictional.jpg",
         desc: "Fast-spinning ellipsoid located in the Kuiper Belt.", type: "DWARF PLANET", year: "285 Years"
+    },
+    {
+        name: "Quaoar", size: 0.6, color: "#888888", distance: 600, 
+        elements: {
+            semiMajorAxis: 43.694,
+            eccentricity: 0.038,
+            inclination: 7.99,
+            meanLong: 190.5,
+            longitudePeri: 96.1
+        },
+        obliquity: 0.0,
+        textureUrl: "assets/textures/2k_quoaoar.jpg",
+        desc: "A Kuiper Belt object with a small moon named Weywot.", type: "DWARF PLANET", year: "289 Years"
     },
     {
         name: "Makemake", size: 0.6, color: "#FFAA88", distance: 620, 
@@ -175,7 +189,21 @@ export const SYSTEM_DATA = [
             meanLong: 177.3,
             longitudePeri: 295.6
         },
+        textureUrl: "assets/textures/2k_makemake_fictional.jpg",
         desc: "A reddish dwarf planet with no significant atmosphere.", type: "DWARF PLANET", year: "309 Years"
+    },
+    {
+        name: "Gonggong", size: 0.7, color: "#BB4422", distance: 660, 
+        elements: {
+            semiMajorAxis: 67.33,
+            eccentricity: 0.506,
+            inclination: 30.7,
+            meanLong: 120.4,
+            longitudePeri: 151.8
+        },
+        obliquity: 0.0,
+        textureUrl: "assets/textures/2k_gonggong.jpg",
+        desc: "A large, distant dwarf planet with a distinct red surface.", type: "DWARF PLANET", year: "554 Years"
     },
     {
         name: "Eris", size: 0.7, color: "#FFFFFF", distance: 780, 
@@ -186,6 +214,7 @@ export const SYSTEM_DATA = [
             meanLong: 32.5,
             longitudePeri: 151.4
         },
+        textureUrl: "assets/textures/2k_eris_fictional.jpg",
         desc: "One of the most massive dwarf planets in our solar system.", type: "DWARF PLANET", year: "558 Years"
     },
     {
@@ -211,6 +240,7 @@ export const SYSTEM_DATA = [
             meanLong: 58.0,
             longitudePeri: 111.0
         },
+        textureUrl: "assets/textures/2k_halley.jpg",
         desc: "A periodic comet that returns to Earth's vicinity every 75–76 years.", type: "COMET", year: "76 Years"
     },
     {

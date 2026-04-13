@@ -25,18 +25,46 @@ const TEXTURE_MAP = {
     "Saturn_Ring": TEX_PATH + "2k_saturn_ring_alpha.png"
 };
 
-// Texture Cache to prevent re-loading
 const textureCache = {};
 Object.entries(TEXTURE_MAP).forEach(([key, path]) => {
     const tex = textureLoader.load(path);
-    // Improve visual quality for skewed angles
     tex.anisotropy = 16; 
     textureCache[key] = tex;
 });
 
 /**
- * Distant Starfield
+ * NEW: Atmospheric Scattering Shader Material
+ * Uses Fresnel effect to create a halo based on camera view angle
  */
+function createAtmosphereMaterial(color, camera) {
+    return new THREE.ShaderMaterial({
+        uniforms: {
+            glowColor: { value: new THREE.Color(color) },
+            viewVector: { value: camera.position }
+        },
+        vertexShader: `
+            varying float intensity;
+            void main() {
+                vec3 vNormal = normalize( normalMatrix * normal );
+                vec3 vNormel = normalize( normalMatrix * viewVector );
+                intensity = pow( 0.6 - dot(vNormal, vNormel), 2.5 );
+                gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            }
+        `,
+        fragmentShader: `
+            varying float intensity;
+            uniform vec3 glowColor;
+            void main() {
+                vec3 glow = glowColor * intensity;
+                gl_FragColor = vec4( glow, 1.0 );
+            }
+        `,
+        side: THREE.BackSide,
+        blending: THREE.AdditiveBlending,
+        transparent: true
+    });
+}
+
 export function createStars(scene) {
     const geometry = new THREE.BufferGeometry();
     const vertices = [];
@@ -60,18 +88,11 @@ export function createStars(scene) {
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     
     const material = new THREE.PointsMaterial({ 
-        size: 1.5, 
-        vertexColors: true, 
-        transparent: true, 
-        opacity: 0.8, 
-        sizeAttenuation: true 
+        size: 1.5, vertexColors: true, transparent: true, opacity: 0.8, sizeAttenuation: true 
     });
     scene.add(new THREE.Points(geometry, material));
 }
 
-/**
- * The Oort Cloud (Distant Icy Shell)
- */
 export function createOortCloud(scene) {
     const particles = 15000;
     const geometry = new THREE.BufferGeometry();
@@ -84,7 +105,6 @@ export function createOortCloud(scene) {
         const theta = 2 * Math.PI * u;
         const phi = Math.acos(2 * v - 1);
         const r = 4000 + Math.random() * 2000; 
-
         positions.push(
             r * Math.sin(phi) * Math.cos(theta),
             r * Math.sin(phi) * Math.sin(theta),
@@ -96,15 +116,11 @@ export function createOortCloud(scene) {
     const material = new THREE.PointsMaterial({
         size: 2, color: color, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending
     });
-
     const cloud = new THREE.Points(geometry, material);
     scene.add(cloud);
     return cloud;
 }
 
-/**
- * Real Elliptical Orbit Lines
- */
 function createOrbitLine(data) {
     const points = [];
     const segments = 128;
@@ -119,30 +135,20 @@ function createOrbitLine(data) {
     
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({ 
-        color: 0x444466, 
-        transparent: true, 
-        opacity: 0.2, 
-        blending: THREE.AdditiveBlending,
-        depthWrite: false // CRITICAL: Fixes orbit-planet clipping
+        color: 0x444466, transparent: true, opacity: 0.2, 
+        blending: THREE.AdditiveBlending, depthWrite: false 
     });
-
     const line = new THREE.Line(geometry, material);
     const orbitGroup = new THREE.Group();
     orbitGroup.add(line);
-
-    if (data.elements?.inclination) {
-        orbitGroup.rotation.x = data.elements.inclination * (Math.PI / 180);
-    }
-    
+    if (data.elements?.inclination) orbitGroup.rotation.x = data.elements.inclination * (Math.PI / 180);
     return orbitGroup;
 }
 
 function createBeltMesh(data) {
     const geometry = new THREE.DodecahedronGeometry(data.name === 'Kuiper Belt' ? 0.6 : 0.3, 0);
     const material = new THREE.MeshStandardMaterial({ 
-        color: data.color, 
-        emissive: data.color, 
-        emissiveIntensity: 0.3 
+        color: data.color, emissive: data.color, emissiveIntensity: 0.3 
     });
     const mesh = new THREE.InstancedMesh(geometry, material, data.count);
     const dummy = new THREE.Object3D();
@@ -167,11 +173,8 @@ function createBeltMesh(data) {
 function createTexturedRing(data) {
     const geometry = new THREE.RingGeometry(data.size * 1.4, data.size * 2.5, 64);
     const material = new THREE.MeshStandardMaterial({
-        map: textureCache["Saturn_Ring"],
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide,
-        depthWrite: false
+        map: textureCache["Saturn_Ring"], transparent: true, opacity: 0.8,
+        side: THREE.DoubleSide, depthWrite: false
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = Math.PI / 2;
@@ -189,10 +192,7 @@ function createParticleRing(data) {
     }
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({ 
-        color: 0x88ccff, 
-        size: 0.05, 
-        transparent: true, 
-        opacity: 0.4 
+        color: 0x88ccff, size: 0.05, transparent: true, opacity: 0.4 
     });
     const points = new THREE.Points(geometry, material);
     points.rotation.y = Math.PI / 2; 
@@ -205,11 +205,7 @@ function createCometTail(mesh) {
     const positions = new Float32Array(particles * 3);
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({ 
-        color: 0xaaaaff, 
-        size: 0.1, 
-        transparent: true, 
-        opacity: 0.4, 
-        blending: THREE.AdditiveBlending 
+        color: 0xaaaaff, size: 0.1, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending 
     });
     const tail = new THREE.Points(geometry, material);
     mesh.add(tail);
@@ -228,9 +224,9 @@ function createSunFlares(sunMesh) {
 }
 
 /**
- * Master Build Function
+ * Updated Master Build Function
  */
-export function buildSystem(scene, systemData) {
+export function buildSystem(scene, systemData, camera) {
     const objects = [];
     
     systemData.forEach((data) => {
@@ -266,11 +262,24 @@ export function buildSystem(scene, systemData) {
                 mat.color = new THREE.Color(data.color); 
             }
             mesh = new THREE.Mesh(geometry, mat);
+
+            // NEW: Add Atmosphere Glow to specific planets
+            const planetsWithAtmosphere = {
+                "Earth": 0x4488ff,
+                "Mars": 0xff4422,
+                "Venus": 0xffcc88,
+                "Neptune": 0x2244ff
+            };
+
+            if (planetsWithAtmosphere[data.name]) {
+                const atmosphereGeo = new THREE.SphereGeometry(data.size * 1.02, 64, 64);
+                const atmosphereMat = createAtmosphereMaterial(planetsWithAtmosphere[data.name], camera);
+                const atmosphereMesh = new THREE.Mesh(atmosphereGeo, atmosphereMat);
+                group.add(atmosphereMesh);
+            }
         }
 
-        // STABILITY FIX: Keep rendering even when zoomed in tight
         mesh.frustumCulled = false;
-
         if (data.name === "Saturn") mesh.add(createTexturedRing(data));
         if (data.name === "Uranus") mesh.add(createParticleRing(data));
 
@@ -290,9 +299,7 @@ export function buildSystem(scene, systemData) {
             data.moons.forEach((moonData) => {
                 const moonMesh = new THREE.Mesh(
                     new THREE.SphereGeometry(moonData.size, 32, 32),
-                    new THREE.MeshStandardMaterial({ 
-                        color: moonData.color 
-                    })
+                    new THREE.MeshStandardMaterial({ color: moonData.color })
                 );
                 mesh.add(moonMesh);
                 planetObj.moons.push({ mesh: moonMesh, data: moonData, angle: Math.random() * Math.PI * 2 });

@@ -1,6 +1,5 @@
 /**
  * UI Controller for Project Solaris
- * Handles Information Panels, Planet List, and Master Clock Controls
  */
 
 const typeStyles = {
@@ -12,18 +11,24 @@ const typeStyles = {
     "BELT": "bg-gray-500/30 text-gray-300 border-gray-500/30"
 };
 
-/**
- * Updates the right-hand Info Panel with celestial data
- */
 export function updatePanel(data) {
     if (!data) return;
 
-    // 1. Basic Info
     document.getElementById('info-name').innerText = data.name;
     document.getElementById('info-type').innerText = data.type;
-    document.getElementById('info-desc').innerText = data.description || data.desc; // Support both naming conventions
+    document.getElementById('info-desc').innerText = data.description || data.desc; 
     
-    // 2. Fix for "undefined AU" (The Sun is the center)
+    // Reset Academic UI on planet change
+    const infoDesc = document.getElementById('info-desc');
+    infoDesc.classList.remove('blur-md');
+    const blurtArea = document.getElementById('blurt-session');
+    if(blurtArea) {
+        blurtArea.classList.add('hidden');
+        blurtArea.value = "";
+    }
+    const studyBtn = document.getElementById('btn-study');
+    if(studyBtn) studyBtn.innerText = "FEYNMAN METHOD";
+
     const distEl = document.getElementById('info-dist');
     if (data.name === "Sun") {
         distEl.innerText = "SOLAR CENTER";
@@ -33,15 +38,15 @@ export function updatePanel(data) {
         distEl.innerText = data.distance ? `${data.distance} AU` : "--";
     }
 
-    // 3. Orbit Period
+    const delayEl = document.getElementById('telemetry-delay');
+    if (delayEl) delayEl.innerText = "CALCULATING...";
+
     document.getElementById('info-year').innerText = data.orbit || data.year || "--";
     
-    // 4. Dynamic Badge Styling
     const style = typeStyles[data.type] || typeStyles["TERRESTRIAL"];
     const typeBadge = document.getElementById('info-type');
     typeBadge.className = `text-[10px] font-bold tracking-wider px-2 py-1 rounded border uppercase ${style}`;
 
-    // 5. Update Sidebar Selection Visuals
     document.querySelectorAll('.planet-btn').forEach(btn => {
         btn.classList.remove('bg-indigo-600/40', 'border-indigo-400', 'shadow-lg');
         btn.classList.add('bg-white/5', 'border-transparent');
@@ -55,15 +60,33 @@ export function updatePanel(data) {
     }
 }
 
-/**
- * Initializes the Interactive UI Components
- */
+// NEW: Academic Logic
+function initAcademicModule() {
+    const studyBtn = document.getElementById('btn-study');
+    const blurtArea = document.getElementById('blurt-session');
+    const infoDesc = document.getElementById('info-desc');
+
+    if (!studyBtn) return;
+
+    studyBtn.onclick = () => {
+        const isHidden = blurtArea.classList.toggle('hidden');
+        if (!isHidden) {
+            infoDesc.classList.add('blur-md');
+            studyBtn.innerText = "FINISH BLURTING";
+            blurtArea.focus();
+        } else {
+            infoDesc.classList.remove('blur-md');
+            studyBtn.innerText = "FEYNMAN METHOD";
+            // Logic for mastery points could be added here
+        }
+    };
+}
+
 export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine) {
     const planetList = document.getElementById('planet-list');
     const speedDisplay = document.getElementById('speed-display');
     const pauseBtn = document.getElementById('btn-pause');
 
-    // Generate Planet List in Sidebar
     systemData.forEach(p => {
         const btn = document.createElement('button');
         const cleanName = p.name.replace(/\s+/g, '');
@@ -91,13 +114,9 @@ export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine
         planetList.appendChild(btn);
     });
 
-    // Reset Camera Button
     const resetBtn = document.getElementById('reset-cam');
     if (resetBtn) resetBtn.onclick = onResetCallback;
 
-    /**
-     * Updates the Speed Indicator in the Bottom Bar
-     */
     const updateSpeedUI = () => {
         const speed = timeEngine.timeScale;
         if (speed === 1) {
@@ -112,7 +131,6 @@ export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine
         }
     };
 
-    // Playback Controls
     pauseBtn.onclick = () => {
         timeEngine.paused = !timeEngine.paused;
         pauseBtn.innerText = timeEngine.paused ? '▶' : '⏸';
@@ -120,13 +138,11 @@ export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine
     };
 
     document.getElementById('btn-forward').onclick = () => {
-        // Double the speed, capped at 1 million
         timeEngine.timeScale = Math.min(timeEngine.timeScale * 2, 1000000);
         updateSpeedUI();
     };
 
     document.getElementById('btn-rewind').onclick = () => {
-        // Halve the speed, minimum of 1 (Live)
         if (Math.abs(timeEngine.timeScale) > 1) {
             timeEngine.timeScale = Math.max(Math.round(timeEngine.timeScale / 2), 1);
         } else {
@@ -135,6 +151,6 @@ export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine
         updateSpeedUI();
     };
 
-    // Initial State
     updateSpeedUI();
+    initAcademicModule(); // Initialize the blurt system
 }
