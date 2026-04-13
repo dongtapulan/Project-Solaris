@@ -28,13 +28,12 @@ const TEXTURE_MAP = {
 const textureCache = {};
 Object.entries(TEXTURE_MAP).forEach(([key, path]) => {
     const tex = textureLoader.load(path);
-    tex.anisotropy = 16; 
+    tex.anisotropy = 8; // Reduced from 16 to 8 to save laptop memory
     textureCache[key] = tex;
 });
 
 /**
- * NEW: Atmospheric Scattering Shader Material
- * Uses Fresnel effect to create a halo based on camera view angle
+ * Optimized Atmospheric Scattering
  */
 function createAtmosphereMaterial(color, camera) {
     return new THREE.ShaderMaterial({
@@ -73,9 +72,9 @@ export function createStars(scene) {
     
     for (let i = 0; i < 8000; i++) {
         vertices.push(
-            THREE.MathUtils.randFloatSpread(5000), 
-            THREE.MathUtils.randFloatSpread(5000), 
-            THREE.MathUtils.randFloatSpread(5000)
+            THREE.MathUtils.randFloatSpread(10000), 
+            THREE.MathUtils.randFloatSpread(10000), 
+            THREE.MathUtils.randFloatSpread(10000)
         );
         const starType = Math.random();
         if (starType > 0.9) colorObj.setHex(0xffffff);
@@ -88,7 +87,7 @@ export function createStars(scene) {
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     
     const material = new THREE.PointsMaterial({ 
-        size: 1.5, vertexColors: true, transparent: true, opacity: 0.8, sizeAttenuation: true 
+        size: 2, vertexColors: true, transparent: true, opacity: 0.8, sizeAttenuation: true 
     });
     scene.add(new THREE.Points(geometry, material));
 }
@@ -104,7 +103,7 @@ export function createOortCloud(scene) {
         const v = Math.random();
         const theta = 2 * Math.PI * u;
         const phi = Math.acos(2 * v - 1);
-        const r = 4000 + Math.random() * 2000; 
+        const r = 5000 + Math.random() * 3000; 
         positions.push(
             r * Math.sin(phi) * Math.cos(theta),
             r * Math.sin(phi) * Math.sin(theta),
@@ -114,7 +113,7 @@ export function createOortCloud(scene) {
 
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({
-        size: 2, color: color, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending
+        size: 3, color: color, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending
     });
     const cloud = new THREE.Points(geometry, material);
     scene.add(cloud);
@@ -123,7 +122,7 @@ export function createOortCloud(scene) {
 
 function createOrbitLine(data) {
     const points = [];
-    const segments = 128;
+    const segments = 256;
     const visualScale = data.distance; 
     const e = data.elements?.eccentricity || 0;
     
@@ -135,7 +134,7 @@ function createOrbitLine(data) {
     
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({ 
-        color: 0x444466, transparent: true, opacity: 0.2, 
+        color: 0x444466, transparent: true, opacity: 0.15, 
         blending: THREE.AdditiveBlending, depthWrite: false 
     });
     const line = new THREE.Line(geometry, material);
@@ -148,7 +147,7 @@ function createOrbitLine(data) {
 function createBeltMesh(data) {
     const geometry = new THREE.DodecahedronGeometry(data.name === 'Kuiper Belt' ? 0.6 : 0.3, 0);
     const material = new THREE.MeshStandardMaterial({ 
-        color: data.color, emissive: data.color, emissiveIntensity: 0.3 
+        color: data.color, emissive: data.color, emissiveIntensity: 0.5 // High visibility
     });
     const mesh = new THREE.InstancedMesh(geometry, material, data.count);
     const dummy = new THREE.Object3D();
@@ -173,7 +172,7 @@ function createBeltMesh(data) {
 function createTexturedRing(data) {
     const geometry = new THREE.RingGeometry(data.size * 1.4, data.size * 2.5, 64);
     const material = new THREE.MeshStandardMaterial({
-        map: textureCache["Saturn_Ring"], transparent: true, opacity: 0.8,
+        map: textureCache["Saturn_Ring"], transparent: true, opacity: 0.6,
         side: THREE.DoubleSide, depthWrite: false
     });
     const mesh = new THREE.Mesh(geometry, material);
@@ -192,35 +191,49 @@ function createParticleRing(data) {
     }
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({ 
-        color: 0x88ccff, size: 0.05, transparent: true, opacity: 0.4 
+        color: 0x88ccff, size: 0.1, transparent: true, opacity: 0.5 
     });
     const points = new THREE.Points(geometry, material);
-    points.rotation.y = Math.PI / 2; 
+    points.rotation.x = Math.PI / 2; 
     return points;
 }
 
 function createCometTail(mesh) {
-    const particles = 200;
+    const particles = 1000; // Increased for better visual
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particles * 3);
+    const colors = new Float32Array(particles * 3);
+
+    for(let i=0; i<particles; i++) {
+        positions[i*3] = 0;
+        positions[i*3+1] = 0;
+        positions[i*3+2] = i * 0.1; // Length of tail
+    }
+
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const material = new THREE.PointsMaterial({ 
-        color: 0xaaaaff, size: 0.1, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending 
+        color: 0x88aaff, size: 0.15, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending 
     });
     const tail = new THREE.Points(geometry, material);
     mesh.add(tail);
     return tail;
 }
 
-function createSunFlares(sunMesh) {
-    const flareGeo = new THREE.SphereGeometry(sunMesh.geometry.parameters.radius * 1.05, 64, 64);
-    const flareMat = new THREE.MeshBasicMaterial({
-        color: 0xffaa00, transparent: true, opacity: 0.2,
-        blending: THREE.AdditiveBlending, side: THREE.BackSide, fog: false 
+// REALISTIC SUN GLOW (Sprite based for performance)
+function createSunGlow(size) {
+    const loader = new THREE.TextureLoader();
+    // Using a generic glow texture
+    const glowTexture = loader.load('https://threejs.org/examples/textures/lensflare/lensflare0.png');
+    const material = new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: 0xffdd88,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        opacity: 0.7
     });
-    const flareMesh = new THREE.Mesh(flareGeo, flareMat);
-    sunMesh.add(flareMesh);
-    return flareMesh;
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(size * 6, size * 6, 1);
+    return sprite;
 }
 
 /**
@@ -245,13 +258,24 @@ export function buildSystem(scene, systemData, camera) {
 
         if (data.name === "Sun") {
             mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ 
-                map: textureCache["Sun"], color: 0xffffff, fog: false 
+                map: textureCache["Sun"], color: 0xffffff
             }));
-            createSunFlares(mesh);
+            // Add Flare + Sprite Glow
+            const flares = new THREE.Mesh(
+                new THREE.SphereGeometry(data.size * 1.02, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, side: THREE.BackSide })
+            );
+            mesh.add(flares);
+            mesh.add(createSunGlow(data.size));
         } else {
+            // THE "DARK SIDE" LOGIC:
+            // We use Emissive to make sure the planet isn't pitch black,
+            // but keep EmissiveIntensity low (0.15) so the Sun light still creates a clear day/night.
             const mat = new THREE.MeshStandardMaterial({
-                roughness: 0.8, metalness: 0.1,
-                emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.1 
+                roughness: 0.8, 
+                metalness: 0.1,
+                emissive: new THREE.Color(0xffffff),
+                emissiveIntensity: 0.15 
             });
             
             const tex = textureCache[data.name];
@@ -261,20 +285,25 @@ export function buildSystem(scene, systemData, camera) {
             } else { 
                 mat.color = new THREE.Color(data.color); 
             }
+
+            // Halley's Comet Glow
+            if (data.name === "Halley's Comet") {
+                mat.emissive = new THREE.Color(0x88aaff);
+                mat.emissiveIntensity = 1.0;
+            }
+
             mesh = new THREE.Mesh(geometry, mat);
 
-            // NEW: Add Atmosphere Glow to specific planets
-            const planetsWithAtmosphere = {
-                "Earth": 0x4488ff,
-                "Mars": 0xff4422,
-                "Venus": 0xffcc88,
-                "Neptune": 0x2244ff
+            // Atmospheric Scattering
+            const atmosphereConfigs = {
+                "Earth": 0x4488ff, "Mars": 0xff4422, "Venus": 0xffcc88, "Neptune": 0x2244ff
             };
 
-            if (planetsWithAtmosphere[data.name]) {
-                const atmosphereGeo = new THREE.SphereGeometry(data.size * 1.02, 64, 64);
-                const atmosphereMat = createAtmosphereMaterial(planetsWithAtmosphere[data.name], camera);
-                const atmosphereMesh = new THREE.Mesh(atmosphereGeo, atmosphereMat);
+            if (atmosphereConfigs[data.name]) {
+                const atmosphereMesh = new THREE.Mesh(
+                    new THREE.SphereGeometry(data.size * 1.04, 64, 64),
+                    createAtmosphereMaterial(atmosphereConfigs[data.name], camera)
+                );
                 group.add(atmosphereMesh);
             }
         }
@@ -299,7 +328,11 @@ export function buildSystem(scene, systemData, camera) {
             data.moons.forEach((moonData) => {
                 const moonMesh = new THREE.Mesh(
                     new THREE.SphereGeometry(moonData.size, 32, 32),
-                    new THREE.MeshStandardMaterial({ color: moonData.color })
+                    new THREE.MeshStandardMaterial({ 
+                        color: moonData.color, 
+                        emissive: moonData.color, 
+                        emissiveIntensity: 0.1 
+                    })
                 );
                 mesh.add(moonMesh);
                 planetObj.moons.push({ mesh: moonMesh, data: moonData, angle: Math.random() * Math.PI * 2 });

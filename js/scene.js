@@ -2,52 +2,55 @@ import * as THREE from 'three';
 
 export const scene = new THREE.Scene();
 
-// Subtle Space Fog: Helps with the sense of scale in the outer reaches
-scene.fog = new THREE.FogExp2(0x000005, 0.00005); 
+// 1. Subtle Space Fog
+// Deep space black-blue fog to mask the far-clipping plane.
+scene.fog = new THREE.FogExp2(0x000005, 0.00008); 
 
 export const camera = new THREE.PerspectiveCamera(
     60, 
     window.innerWidth / window.innerHeight, 
     0.1, 
-    10000 // Increased far plane for the Kuiper Belt and beyond
+    20000 // Far plane high enough for Kuiper/Oort reaches
 );
 camera.position.set(0, 200, 500);
 
 export const renderer = new THREE.WebGLRenderer({ 
-    antialias: true, 
+    antialias: false, // DISABLED: Major battery/heat saver for laptops
     alpha: true,
-    powerPreference: "high-performance" 
+    powerPreference: "high-performance",
+    precision: "mediump" // Sufficient for mobile/laptop displays
 });
 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-// Physical Lighting & Tone Mapping
+// Color Management
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2; // Slightly boosted for better texture pop
+renderer.toneMappingExposure = 1.0; 
 
-// 1. Better Ambient Logic: HemisphereLight
-// This simulates light bouncing off galactic dust. 
-// Top is slightly blue-ish (space), bottom is neutral.
-const ambientLight = new THREE.HemisphereLight(0xffffff, 0x222222, 0.6); 
-scene.add(ambientLight);
+/**
+ * LIGHTING ENGINE
+ * Optimized for "Dark Side" visibility without overheating.
+ */
 
-// 2. The Sun (Point Light)
-// Use Physical Decay (2) for realistic light falloff.
-// Intensity is higher because ACESFilmic compresses bright highlights.
-const sunLight = new THREE.PointLight(0xffffff, 600, 5000, 2); 
+// 1. Core Sun Light (The Light Maker)
+// We remove .castShadow = true because it requires rendering the scene multiple times.
+// Instead, we use high intensity and a PointLight for natural falloff.
+const sunLight = new THREE.PointLight(0xffffff, 800, 8000, 2); 
 sunLight.position.set(0, 0, 0);
-// Enable shadows if your planet meshes are set to receive them
-sunLight.castShadow = true; 
-sunLight.shadow.mapSize.width = 1024;
-sunLight.shadow.mapSize.height = 1024;
 scene.add(sunLight);
 
-// 3. Optional: Subtle Blue Rim Light
-// Simulates distant star-clusters to give planets a "rim" highlight
-const galacticLight = new THREE.DirectionalLight(0x4444ff, 0.1);
-galacticLight.position.set(100, 100, 100);
+// 2. Global Ambient (The "Fill" Light)
+// HemisphereLight is great because it gives different colors to the poles,
+// ensuring the "dark side" isn't 100% black so you can still see the silhouette.
+const ambientLight = new THREE.HemisphereLight(0x111122, 0x000000, 0.5); 
+scene.add(ambientLight);
+
+// 3. Galactic Rim Light (The "Pop" Light)
+// Very subtle blue light from a distant angle to catch the edges of the planets.
+const galacticLight = new THREE.DirectionalLight(0x5555ff, 0.15);
+galacticLight.position.set(500, 200, 500);
 scene.add(galacticLight);
 
 export function handleResize() {
