@@ -1,0 +1,24 @@
+{
+  "name": "space-env-classroom",
+  "version": "1.0.0",
+  "description": "Science Classroom Edition - Solar System Explorer",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "author": "HueMind Studio",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.huemind.spaceenv",
+    "productName": "Space.env Science Edition",
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.png"
+    }
+  }
+}
