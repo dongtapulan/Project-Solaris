@@ -131,3 +131,23 @@ body {
     background: rgba(99, 102, 241, 0.15);
     transform: translateX(3px);
 }
+
+/* --- HIDE ALL STANDARD UI PANELS IN SPACESHIP MODE --- */
+body.spaceship-active > div:not(#canvas-container):not(#ufo-hud):not(.top-nav-container),
+body.spaceship-active aside,
+body.spaceship-active nav,
+body.spaceship-active [class*="sidebar"],
+body.spaceship-active [class*="panel"],
+body.spaceship-active [class*="entity"],
+body.spaceship-active [class*="control"] {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Ensure top telemetry bar stays visible */
+body.spaceship-active .top-nav-container {
+    display: flex !important;
+    opacity: 1 !important;
+    z-index: 1000 !important;
+}

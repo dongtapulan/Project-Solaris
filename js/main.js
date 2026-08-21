@@ -7,6 +7,7 @@ import { initUI, updatePanel } from './ui.js';
 import { initLoader } from './loader.js';
 import { TimeEngine } from './utils/time.js'; 
 import { fetchSolarWeather, fetchNEOs } from './utils/telemetry.js';
+import { SpaceshipHUD } from './spaceship.js';
 
 // 1. Initialize Loading Screen
 initLoader(loadingManager);
@@ -35,12 +36,28 @@ createStars(scene);
 const oortCloud = createOortCloud(scene); 
 const objects = buildSystem(scene, SYSTEM_DATA, camera);
 
+// 4. Initialize Spaceship HUD Module
+const spaceshipHUD = new SpaceshipHUD(camera, renderer.domElement, objects);
+
 let focusedObject = null;
 const targetCameraPosition = new THREE.Vector3(0, 500, 1000);
 
 let isUserInteracting = false;
 controls.addEventListener('start', () => { isUserInteracting = true; });
 controls.addEventListener('end', () => { isUserInteracting = false; });
+
+/**
+ * Calculates Earth's Greenwich Sidereal Time (GST) rotation in radians.
+ */
+function getRealTimeEarthRotationRad(currentSimTime) {
+    const jd = (currentSimTime.getTime() / 86400000) + 2440587.5;
+    const d = jd - 2451545.0;
+    
+    let gmstDeg = (280.46061837 + 360.98564736629 * d) % 360;
+    if (gmstDeg < 0) gmstDeg += 360;
+    
+    return gmstDeg * (Math.PI / 180);
+}
 
 /**
  * NASA DONKI & NEO Telemetry Integration
@@ -118,7 +135,7 @@ const ROTATION_DATA = {
 function animate(currentTime) {
     requestAnimationFrame(animate);
 
-    const deltaTime = (currentTime - lastTime) / 1000 || 0;
+    const deltaTime = Math.min((currentTime - lastTime) / 1000 || 0, 0.1);
     lastTime = currentTime;
 
     timeEngine.update(deltaTime);
@@ -127,11 +144,11 @@ function animate(currentTime) {
     const earthPos = new THREE.Vector3();
     if(earthObj) earthObj.mesh.getWorldPosition(earthPos);
 
+    // --- CELESTIAL ORBITAL & ROTATION PHYSICS ---
     objects.forEach(obj => {
         if (obj.type === 'belt') {
             obj.mesh.rotation.y += (obj.data.speed || 0.0005) * (timeEngine.timeScale / 1000) * deltaTime; 
         } else if (obj.data.elements) {
-            // ORBITAL PHYSICS
             const centuries = timeEngine.getCenturiesSinceEpoch();
             const days = centuries * 36525.0;
             const { semiMajorAxis, eccentricity, meanLong, inclination } = obj.data.elements;
@@ -154,12 +171,16 @@ function animate(currentTime) {
             if (inclination) obj.group.rotation.x = inclination * (Math.PI / 180);
 
             // AXIAL ROTATION
-            const VISUAL_SPEED_SCALAR = 0.5; 
-            const relRotationSpeed = ROTATION_DATA[obj.data.name] || 1.0;
-            const rotationStep = relRotationSpeed * VISUAL_SPEED_SCALAR * timeEngine.timeScale * deltaTime;
-            
-            if (obj.data.name === "Uranus") obj.mesh.rotation.z += rotationStep;
-            else obj.mesh.rotation.y += rotationStep;
+            if (obj.data.name === "Earth") {
+                obj.mesh.rotation.y = getRealTimeEarthRotationRad(timeEngine.currentSimTime);
+            } else {
+                const VISUAL_SPEED_SCALAR = 0.5; 
+                const relRotationSpeed = ROTATION_DATA[obj.data.name] || 1.0;
+                const rotationStep = relRotationSpeed * VISUAL_SPEED_SCALAR * timeEngine.timeScale * deltaTime;
+                
+                if (obj.data.name === "Uranus") obj.mesh.rotation.z += rotationStep;
+                else obj.mesh.rotation.y += rotationStep;
+            }
 
             // PARTICLE RING SPIN ANIMATION
             if (obj.mesh && obj.mesh.children) {
@@ -182,58 +203,64 @@ function animate(currentTime) {
         }
     });
 
-    // HUD & TELEMETRY
+    // --- MODE BRANCHING: SPACESHIP VS ORBITAL CAM ---
+    if (spaceshipHUD.isActive) {
+        controls.enabled = false;
+        spaceshipHUD.update(deltaTime);
+    } else {
+        controls.enabled = true;
+
+        if (focusedObject) {
+            const worldPos = new THREE.Vector3();
+            
+            if (focusedObject.data.type === 'BELT') {
+                worldPos.set(0, 0, 0);
+            } else {
+                focusedObject.mesh.getWorldPosition(worldPos);
+            }
+            
+            const delayEl = document.getElementById('telemetry-delay');
+            if (delayEl && earthObj) {
+                if (focusedObject.data.name === "Earth") {
+                    delayEl.innerText = "INSTANTANEOUS";
+                } else {
+                    const distanceInAU = earthPos.distanceTo(worldPos) / 90; 
+                    const lightSeconds = distanceInAU * 499; 
+                    const mins = Math.floor(lightSeconds / 60);
+                    const secs = Math.floor(lightSeconds % 60);
+                    delayEl.innerText = `${mins}m ${secs}s`;
+                }
+            }
+
+            const coordEl = document.getElementById('target-coords');
+            if (coordEl) coordEl.innerText = `X: ${worldPos.x.toFixed(3)} | Z: ${worldPos.z.toFixed(3)} (AU)`;
+
+            if (!isUserInteracting) {
+                controls.target.lerp(worldPos, 0.04);
+                
+                const safeIdeal = new THREE.Vector3().copy(targetCameraPosition);
+                if (focusedObject.data.type !== 'BELT') {
+                    const zoomDist = 20 + (focusedObject.data.size * (CONFIG.zoomFactor || 5));
+                    safeIdeal.copy(worldPos).add(new THREE.Vector3(zoomDist, zoomDist * 0.5, zoomDist));
+                }
+                camera.position.lerp(safeIdeal, 0.04);
+            } else {
+                controls.target.lerp(worldPos, 0.08);
+            }
+        } else if (!isUserInteracting) {
+            camera.position.lerp(targetCameraPosition, 0.04);
+            controls.target.lerp(new THREE.Vector3(0,0,0), 0.04);
+        }
+
+        controls.update();
+    }
+
+    // GENERAL HUD & TELEMETRY
     const dateEl = document.getElementById('telemetry-date');
     if (dateEl) dateEl.innerText = timeEngine.getFormattedTime();
 
-    if (focusedObject) {
-        const worldPos = new THREE.Vector3();
-        
-        if (focusedObject.data.type === 'BELT') {
-            worldPos.set(0, 0, 0);
-        } else {
-            focusedObject.mesh.getWorldPosition(worldPos);
-        }
-        
-        const delayEl = document.getElementById('telemetry-delay');
-        if (delayEl && earthObj) {
-            if (focusedObject.data.name === "Earth") {
-                delayEl.innerText = "INSTANTANEOUS";
-            } else {
-                const distanceInAU = earthPos.distanceTo(worldPos) / 90; 
-                const lightSeconds = distanceInAU * 499; 
-                const mins = Math.floor(lightSeconds / 60);
-                const secs = Math.floor(lightSeconds % 60);
-                delayEl.innerText = `${mins}m ${secs}s`;
-            }
-        }
-
-        const coordEl = document.getElementById('target-coords');
-        if (coordEl) coordEl.innerText = `X: ${worldPos.x.toFixed(3)} | Z: ${worldPos.z.toFixed(3)} (AU)`;
-
-        // CAMERA LERPING (Only lerp target position while interacting so manual rotation/zooming stays responsive)
-        if (!isUserInteracting) {
-            controls.target.lerp(worldPos, 0.04);
-            
-            const safeIdeal = new THREE.Vector3().copy(targetCameraPosition);
-            if (focusedObject.data.type !== 'BELT') {
-                const zoomDist = 20 + (focusedObject.data.size * (CONFIG.zoomFactor || 5));
-                safeIdeal.copy(worldPos).add(new THREE.Vector3(zoomDist, zoomDist * 0.5, zoomDist));
-            }
-            camera.position.lerp(safeIdeal, 0.04);
-        } else {
-            // Track entity center smoothly without snapping camera zoom orientation
-            controls.target.lerp(worldPos, 0.08);
-        }
-    } else if (!isUserInteracting) {
-        camera.position.lerp(targetCameraPosition, 0.04);
-        controls.target.lerp(new THREE.Vector3(0,0,0), 0.04);
-    }
-
     if (oortCloud) oortCloud.rotation.y += 0.00002;
 
-    // Required for enableDamping to process momentum
-    controls.update();
     renderer.render(scene, camera);
 }
 
