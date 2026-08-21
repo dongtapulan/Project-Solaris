@@ -45,7 +45,7 @@ export function updatePanel(data) {
     
     const style = typeStyles[data.type] || typeStyles["TERRESTRIAL"];
     const typeBadge = document.getElementById('info-type');
-    typeBadge.className = `text-[10px] font-bold tracking-wider px-2 py-1 rounded border uppercase ${style}`;
+    typeBadge.className = `text-[8px] font-bold tracking-wider px-2 py-0.5 rounded border uppercase ${style}`;
 
     document.querySelectorAll('.planet-btn').forEach(btn => {
         btn.classList.remove('bg-indigo-600/40', 'border-indigo-400', 'shadow-lg');
@@ -60,7 +60,7 @@ export function updatePanel(data) {
     }
 }
 
-// NEW: Academic Logic
+// Academic Logic
 function initAcademicModule() {
     const studyBtn = document.getElementById('btn-study');
     const blurtArea = document.getElementById('blurt-session');
@@ -77,7 +77,6 @@ function initAcademicModule() {
         } else {
             infoDesc.classList.remove('blur-md');
             studyBtn.innerText = "FEYNMAN METHOD";
-            // Logic for mastery points could be added here
         }
     };
 }
@@ -91,7 +90,7 @@ export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine
         const btn = document.createElement('button');
         const cleanName = p.name.replace(/\s+/g, '');
         btn.id = `btn-${cleanName}`;
-        btn.className = 'planet-btn flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-transparent transition-all w-full text-left group mb-1';
+        btn.className = 'planet-btn flex items-center gap-2.5 p-2 rounded-xl bg-white/5 border border-transparent transition-all w-full text-left group';
         
         let iconColor = p.color || "#ffffff";
         let shapeClass = "rounded-full";
@@ -102,17 +101,35 @@ export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine
         }
         
         btn.innerHTML = `
-            <div class="w-3 h-3 ${shapeClass} shrink-0 shadow-[0_0_8px_rgba(255,255,255,0.2)] transition-transform group-hover:scale-125" 
+            <div class="w-2.5 h-2.5 ${shapeClass} shrink-0 shadow-[0_0_6px_rgba(255,255,255,0.2)] transition-transform group-hover:scale-125" 
                  style="background-color: ${iconColor}; border-color: ${p.color}"></div> 
             <div class="flex flex-col overflow-hidden">
-                <span class="text-xs font-bold text-gray-100 uppercase tracking-wide group-hover:text-white truncate">${p.name}</span>
-                <span class="text-[8px] text-gray-500 uppercase tracking-tighter group-hover:text-gray-400">${p.type}</span>
+                <span class="text-[11px] font-bold text-gray-100 uppercase tracking-wide group-hover:text-white truncate">${p.name}</span>
+                <span class="text-[7px] text-gray-500 uppercase tracking-tighter group-hover:text-gray-400">${p.type}</span>
             </div>
         `;
 
         btn.onclick = () => onSelectCallback(p.name);
         planetList.appendChild(btn);
     });
+
+    // Collapsible Left Drawer Handler
+    const sidebarLeft = document.getElementById('sidebar-left');
+    const toggleSidebarBtn = document.getElementById('btn-toggle-sidebar');
+    const openSidebarBtn = document.getElementById('btn-open-sidebar');
+    const planetListContainer = document.getElementById('planet-list-container');
+
+    if (sidebarLeft && toggleSidebarBtn && openSidebarBtn && planetListContainer) {
+        toggleSidebarBtn.onclick = () => {
+            planetListContainer.classList.add('hidden');
+            openSidebarBtn.classList.remove('hidden');
+        };
+
+        openSidebarBtn.onclick = () => {
+            planetListContainer.classList.remove('hidden');
+            openSidebarBtn.classList.add('hidden');
+        };
+    }
 
     const resetBtn = document.getElementById('reset-cam');
     if (resetBtn) resetBtn.onclick = onResetCallback;
@@ -152,5 +169,5 @@ export function initUI(systemData, onSelectCallback, onResetCallback, timeEngine
     };
 
     updateSpeedUI();
-    initAcademicModule(); // Initialize the blurt system
+    initAcademicModule();
 }

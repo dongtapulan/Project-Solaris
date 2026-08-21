@@ -18,12 +18,17 @@ timeEngine.timeScale = 1;
 // Append renderer to the DOM
 document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-// Setup OrbitControls
+// Setup OrbitControls with Enhanced Motion Physics
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.maxDistance = 15000; // Increased for Kuiper Belt visibility
-controls.enablePan = true;
+controls.dampingFactor = 0.04;      // Floatier momentum stop
+controls.rotateSpeed = 0.7;         // Snappy but fluid rotation
+controls.zoomSpeed = 0.8;           // Smooth wheel zoom
+controls.panSpeed = 0.6;            // Controlled panning speed
+controls.zoomToCursor = true;       // Zoom directly toward cursor pointer
+controls.screenSpacePanning = true; // Natural 2D screen panning
+controls.minDistance = 2;
+controls.maxDistance = 15000;
 
 // 3. Initialize System Entities 
 createStars(scene);
@@ -66,7 +71,7 @@ updateTelemetry();
 setInterval(updateTelemetry, 300000);
 
 /**
- * Camera Focus Logic - FIXED for Belts
+ * Camera Focus Logic
  */
 function focusOn(planetName) {
     const target = objects.find(o => o.data.name === planetName);
@@ -76,10 +81,9 @@ function focusOn(planetName) {
     updatePanel(target.data);
 
     if (target.data.type === 'BELT') {
-        // FIXED: Use distance fallback to prevent camera from flying into the void
         const orbitDist = target.data.distance || 600; 
         targetCameraPosition.set(0, orbitDist * 1.2, orbitDist * 1.8);
-        controls.target.set(0, 0, 0); // Always center on Sun for belts
+        controls.target.set(0, 0, 0);
     } else {
         const worldPos = new THREE.Vector3();
         target.mesh.getWorldPosition(worldPos);
@@ -157,6 +161,15 @@ function animate(currentTime) {
             if (obj.data.name === "Uranus") obj.mesh.rotation.z += rotationStep;
             else obj.mesh.rotation.y += rotationStep;
 
+            // PARTICLE RING SPIN ANIMATION
+            if (obj.mesh && obj.mesh.children) {
+                obj.mesh.children.forEach(child => {
+                    if (child.isPoints) {
+                        child.rotation.z += 0.001 * (timeEngine.timeScale || 1) * deltaTime;
+                    }
+                });
+            }
+
             // MOON PHYSICS
             if (obj.moons) {
                 obj.moons.forEach(moon => {
@@ -176,9 +189,8 @@ function animate(currentTime) {
     if (focusedObject) {
         const worldPos = new THREE.Vector3();
         
-        // FIXED: Safe world position gathering
         if (focusedObject.data.type === 'BELT') {
-            worldPos.set(0, 0, 0); // Focus Sun center for belts
+            worldPos.set(0, 0, 0);
         } else {
             focusedObject.mesh.getWorldPosition(worldPos);
         }
@@ -199,24 +211,28 @@ function animate(currentTime) {
         const coordEl = document.getElementById('target-coords');
         if (coordEl) coordEl.innerText = `X: ${worldPos.x.toFixed(3)} | Z: ${worldPos.z.toFixed(3)} (AU)`;
 
-        // CAMERA LERPING
+        // CAMERA LERPING (Only lerp target position while interacting so manual rotation/zooming stays responsive)
         if (!isUserInteracting) {
-            controls.target.lerp(worldPos, 0.05);
+            controls.target.lerp(worldPos, 0.04);
             
-            // FIXED: Ensure camera target isn't NaN
             const safeIdeal = new THREE.Vector3().copy(targetCameraPosition);
             if (focusedObject.data.type !== 'BELT') {
                 const zoomDist = 20 + (focusedObject.data.size * (CONFIG.zoomFactor || 5));
                 safeIdeal.copy(worldPos).add(new THREE.Vector3(zoomDist, zoomDist * 0.5, zoomDist));
             }
-            camera.position.lerp(safeIdeal, 0.05);
+            camera.position.lerp(safeIdeal, 0.04);
+        } else {
+            // Track entity center smoothly without snapping camera zoom orientation
+            controls.target.lerp(worldPos, 0.08);
         }
     } else if (!isUserInteracting) {
-        camera.position.lerp(targetCameraPosition, 0.05);
-        controls.target.lerp(new THREE.Vector3(0,0,0), 0.05);
+        camera.position.lerp(targetCameraPosition, 0.04);
+        controls.target.lerp(new THREE.Vector3(0,0,0), 0.04);
     }
 
     if (oortCloud) oortCloud.rotation.y += 0.00002;
+
+    // Required for enableDamping to process momentum
     controls.update();
     renderer.render(scene, camera);
 }

@@ -21,14 +21,13 @@ const TEXTURE_MAP = {
     "Eris": TEX_PATH + "2k_eris_fictional.jpg",
     "Haumea": TEX_PATH + "2k_haumea_fictional.jpg",
     "Makemake": TEX_PATH + "2k_makemake_fictional.jpg",
-    "Sedna": TEX_PATH + "2k_sedna.jpg",
-    "Saturn_Ring": TEX_PATH + "2k_saturn_ring_alpha.png"
+    "Sedna": TEX_PATH + "2k_sedna.jpg"
 };
 
 const textureCache = {};
 Object.entries(TEXTURE_MAP).forEach(([key, path]) => {
     const tex = textureLoader.load(path);
-    tex.anisotropy = 8; // Reduced from 16 to 8 to save laptop memory
+    tex.anisotropy = 8;
     textureCache[key] = tex;
 });
 
@@ -147,7 +146,7 @@ function createOrbitLine(data) {
 function createBeltMesh(data) {
     const geometry = new THREE.DodecahedronGeometry(data.name === 'Kuiper Belt' ? 0.6 : 0.3, 0);
     const material = new THREE.MeshStandardMaterial({ 
-        color: data.color, emissive: data.color, emissiveIntensity: 0.5 // High visibility
+        color: data.color, emissive: data.color, emissiveIntensity: 0.5 
     });
     const mesh = new THREE.InstancedMesh(geometry, material, data.count);
     const dummy = new THREE.Object3D();
@@ -169,60 +168,161 @@ function createBeltMesh(data) {
     return mesh;
 }
 
-function createTexturedRing(data) {
-    const geometry = new THREE.RingGeometry(data.size * 1.4, data.size * 2.5, 64);
-    const material = new THREE.MeshStandardMaterial({
-        map: textureCache["Saturn_Ring"], transparent: true, opacity: 0.6,
-        side: THREE.DoubleSide, depthWrite: false
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = Math.PI / 2;
-    return mesh;
-}
-
-function createParticleRing(data) {
-    const particles = 1000;
+/**
+ * Universal Particle Ring Generator with Banded Color Support
+ */
+function createParticleRing({ 
+    innerRadius, 
+    outerRadius, 
+    count, 
+    color, 
+    pointSize = 0.25, 
+    opacity = 0.75, 
+    tiltX = 0, 
+    tiltZ = 0,
+    isSaturn = false
+}) {
     const geometry = new THREE.BufferGeometry();
     const positions = [];
-    for (let i = 0; i < particles; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const r = data.size * 1.8 + Math.random() * 0.5;
-        positions.push(Math.cos(angle) * r, Math.sin(angle) * r, 0);
+    const colors = [];
+
+    const baseColor = new THREE.Color(color);
+
+    // Color definitions for Saturn's ring bands
+    const lightBrown = new THREE.Color(0xe6d3a3);
+    const darkBrown = new THREE.Color(0x5c4a30);
+    const cassiniGap = new THREE.Color(0x1a1510);
+
+    for (let i = 0; i < count; i++) {
+        const radius = innerRadius + Math.random() * (outerRadius - innerRadius);
+        const theta = Math.random() * Math.PI * 2;
+
+        const y = (Math.random() - 0.5) * 0.2;
+        const x = radius * Math.cos(theta);
+        const z = radius * Math.sin(theta);
+
+        positions.push(x, y, z);
+
+        let particleColor = baseColor.clone();
+
+        if (isSaturn) {
+            // Normalized radius scale from 0.0 to 1.0
+            const normR = (radius - innerRadius) / (outerRadius - innerRadius);
+
+            if (normR < 0.25) {
+                // Inner C Ring: Darker brown tone
+                particleColor.copy(darkBrown);
+            } else if (normR >= 0.25 && normR < 0.65) {
+                // Bright B Ring: Light tan/cream tone
+                particleColor.copy(lightBrown);
+            } else if (normR >= 0.65 && normR < 0.72) {
+                // Cassini Division Gap: Very dark band
+                particleColor.copy(cassiniGap);
+            } else {
+                // Outer A Ring: Medium brown tone
+                particleColor.copy(lightBrown).lerp(darkBrown, 0.4);
+            }
+        }
+
+        const variance = 0.85 + Math.random() * 0.3;
+        colors.push(
+            particleColor.r * variance,
+            particleColor.g * variance,
+            particleColor.b * variance
+        );
     }
+
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({ 
-        color: 0x88ccff, size: 0.1, transparent: true, opacity: 0.5 
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+    const material = new THREE.PointsMaterial({
+        size: pointSize,
+        vertexColors: true,
+        transparent: true,
+        opacity: opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
     });
-    const points = new THREE.Points(geometry, material);
-    points.rotation.x = Math.PI / 2; 
-    return points;
+
+    const ringParticles = new THREE.Points(geometry, material);
+    
+    ringParticles.rotation.x = tiltX;
+    ringParticles.rotation.z = tiltZ;
+
+    return ringParticles;
 }
 
+/**
+ * Volumetric Comet Tail & Coma Head Generator
+ */
 function createCometTail(mesh) {
-    const particles = 1000; // Increased for better visual
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(particles * 3);
-    const colors = new Float32Array(particles * 3);
+    const group = new THREE.Group();
 
-    for(let i=0; i<particles; i++) {
-        positions[i*3] = 0;
-        positions[i*3+1] = 0;
-        positions[i*3+2] = i * 0.1; // Length of tail
+    // 1. Glowing Nucleus Head (Coma)
+    const loader = new THREE.TextureLoader();
+    const comaTexture = loader.load('https://threejs.org/examples/textures/lensflare/lensflare0.png');
+    const comaMaterial = new THREE.SpriteMaterial({
+        map: comaTexture,
+        color: 0x99ddff,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        opacity: 0.95
+    });
+    const comaSprite = new THREE.Sprite(comaMaterial);
+    comaSprite.scale.set(3.5, 3.5, 1);
+    group.add(comaSprite);
+
+    // 2. Fanning Particle Stream (Ion Tail)
+    const particleCount = 2500;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+
+    const baseColor = new THREE.Color(0x88ccff);
+    const fadeColor = new THREE.Color(0x224488);
+
+    for (let i = 0; i < particleCount; i++) {
+        const lengthRatio = Math.random(); 
+        const z = lengthRatio * 25; // Tail stream length
+
+        const spread = lengthRatio * 2.2 + 0.1; // Broadening cone width
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * spread;
+
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+
+        positions[i * 3] = x;
+        positions[i * 3 + 1] = y;
+        positions[i * 3 + 2] = z;
+
+        const mixedColor = baseColor.clone().lerp(fadeColor, lengthRatio);
+        colors[i * 3] = mixedColor.r;
+        colors[i * 3 + 1] = mixedColor.g;
+        colors[i * 3 + 2] = mixedColor.b;
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({ 
-        color: 0x88aaff, size: 0.15, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending 
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const material = new THREE.PointsMaterial({
+        size: 0.4,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.65,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
     });
-    const tail = new THREE.Points(geometry, material);
-    mesh.add(tail);
-    return tail;
+
+    const tailParticles = new THREE.Points(geometry, material);
+    group.add(tailParticles);
+
+    mesh.add(group);
+    return group;
 }
 
-// REALISTIC SUN GLOW (Sprite based for performance)
 function createSunGlow(size) {
     const loader = new THREE.TextureLoader();
-    // Using a generic glow texture
     const glowTexture = loader.load('https://threejs.org/examples/textures/lensflare/lensflare0.png');
     const material = new THREE.SpriteMaterial({
         map: glowTexture,
@@ -237,7 +337,7 @@ function createSunGlow(size) {
 }
 
 /**
- * Updated Master Build Function
+ * Master Build Function
  */
 export function buildSystem(scene, systemData, camera) {
     const objects = [];
@@ -260,7 +360,6 @@ export function buildSystem(scene, systemData, camera) {
             mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ 
                 map: textureCache["Sun"], color: 0xffffff
             }));
-            // Add Flare + Sprite Glow
             const flares = new THREE.Mesh(
                 new THREE.SphereGeometry(data.size * 1.02, 32, 32),
                 new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, side: THREE.BackSide })
@@ -268,9 +367,6 @@ export function buildSystem(scene, systemData, camera) {
             mesh.add(flares);
             mesh.add(createSunGlow(data.size));
         } else {
-            // THE "DARK SIDE" LOGIC:
-            // We use Emissive to make sure the planet isn't pitch black,
-            // but keep EmissiveIntensity low (0.15) so the Sun light still creates a clear day/night.
             const mat = new THREE.MeshStandardMaterial({
                 roughness: 0.8, 
                 metalness: 0.1,
@@ -286,15 +382,13 @@ export function buildSystem(scene, systemData, camera) {
                 mat.color = new THREE.Color(data.color); 
             }
 
-            // Halley's Comet Glow
             if (data.name === "Halley's Comet") {
-                mat.emissive = new THREE.Color(0x88aaff);
-                mat.emissiveIntensity = 1.0;
+                mat.emissive = new THREE.Color(0xaaeeff);
+                mat.emissiveIntensity = 1.2;
             }
 
             mesh = new THREE.Mesh(geometry, mat);
 
-            // Atmospheric Scattering
             const atmosphereConfigs = {
                 "Earth": 0x4488ff, "Mars": 0xff4422, "Venus": 0xffcc88, "Neptune": 0x2244ff
             };
@@ -309,8 +403,37 @@ export function buildSystem(scene, systemData, camera) {
         }
 
         mesh.frustumCulled = false;
-        if (data.name === "Saturn") mesh.add(createTexturedRing(data));
-        if (data.name === "Uranus") mesh.add(createParticleRing(data));
+
+        // Particle-based Ring System for Saturn (Light & Dark Brown Bands)
+        if (data.name === "Saturn") {
+            const saturnRings = createParticleRing({
+                innerRadius: data.size * 1.4,
+                outerRadius: data.size * 2.8,
+                count: 14000,
+                color: 0xd4c391,
+                pointSize: 0.25,
+                opacity: 0.8,
+                tiltX: 0,
+                tiltZ: Math.PI * (26.7 / 180),
+                isSaturn: true
+            });
+            mesh.add(saturnRings);
+        }
+
+        // Particle-based Ring System for Uranus (Darker Cyan Tint)
+        if (data.name === "Uranus") {
+            const uranusRings = createParticleRing({
+                innerRadius: data.size * 1.4,
+                outerRadius: data.size * 2.1,
+                count: 3500,
+                color: 0x336688,
+                pointSize: 0.2,
+                opacity: 0.45,
+                tiltX: Math.PI / 2,
+                tiltZ: 0
+            });
+            mesh.add(uranusRings);
+        }
 
         mesh.userData = data;
         group.add(mesh);
