@@ -16,6 +16,11 @@ export class SpaceshipHUD {
         this.accel = 700;
         this.damping = 0.95;
 
+        // Mobile Touch Control State
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+        this.touchLookState = { active: false, x: 0, y: 0 };
+        this.touchRotationSpeed = 0.003;
+
         this.keyState = { W: false, S: false, A: false, D: false, Space: false, Shift: false };
 
         this.initUI();
@@ -53,6 +58,79 @@ export class SpaceshipHUD {
 
         document.body.appendChild(this.hudContainer);
         this.targetsLayer = document.getElementById('ufo-targets-layer');
+
+        this.createMobileUI();
+    }
+
+    createMobileUI() {
+        // Floating Toggle Button
+        this.mobileBtn = document.createElement('button');
+        this.mobileBtn.id = 'mobile-spaceship-btn';
+        this.mobileBtn.innerText = '🚀 FLIGHT MODE';
+        this.mobileBtn.style.cssText = `
+            position: fixed; bottom: 20px; right: 20px; z-index: 999;
+            background: rgba(14, 165, 233, 0.25); border: 1px solid #38bdf8;
+            color: #38bdf8; padding: 10px 16px; border-radius: 20px;
+            font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold;
+            backdrop-filter: blur(8px); box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+            cursor: pointer; user-select: none; -webkit-user-select: none;
+        `;
+        this.mobileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleMode();
+        });
+        document.body.appendChild(this.mobileBtn);
+
+        // Mobile Flight Controls Container
+        this.mobileControls = document.createElement('div');
+        this.mobileControls.id = 'mobile-flight-pad';
+        this.mobileControls.style.cssText = `
+            position: fixed; bottom: 20px; left: 20px; z-index: 1001;
+            display: none; gap: 8px; flex-direction: column; pointer-events: auto;
+        `;
+        this.mobileControls.innerHTML = `
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-fwd" style="${this.getTouchBtnStyle()}">▲ FWD</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-left" style="${this.getTouchBtnStyle()}">◀ L</button>
+                <button id="btn-back" style="${this.getTouchBtnStyle()}">▼ BWD</button>
+                <button id="btn-right" style="${this.getTouchBtnStyle()}">R ▶</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-up" style="${this.getTouchBtnStyle()}">▲ UP</button>
+                <button id="btn-down" style="${this.getTouchBtnStyle()}">▼ DOWN</button>
+            </div>
+        `;
+        document.body.appendChild(this.mobileControls);
+
+        this.bindTouchPadEvents();
+    }
+
+    getTouchBtnStyle() {
+        return `
+            background: rgba(8, 15, 30, 0.85); border: 1px solid rgba(56, 189, 248, 0.5);
+            color: #38bdf8; padding: 10px 14px; border-radius: 6px; font-size: 10px;
+            font-family: monospace; font-weight: bold; user-select: none; -webkit-user-select: none;
+        `;
+    }
+
+    bindTouchPadEvents() {
+        const bindBtn = (id, key) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); this.keyState[key] = true; });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); this.keyState[key] = false; });
+            btn.addEventListener('mousedown', () => { this.keyState[key] = true; });
+            btn.addEventListener('mouseup', () => { this.keyState[key] = false; });
+        };
+
+        bindBtn('btn-fwd', 'W');
+        bindBtn('btn-back', 'S');
+        bindBtn('btn-left', 'A');
+        bindBtn('btn-right', 'D');
+        bindBtn('btn-up', 'Space');
+        bindBtn('btn-down', 'Shift');
     }
 
     initListeners() {
@@ -79,8 +157,33 @@ export class SpaceshipHUD {
             if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.keyState.Shift = false;
         });
 
+        // Touch Drag Camera Look for Mobile
+        window.addEventListener('touchstart', (e) => {
+            if (!this.isActive || e.target.closest('#mobile-flight-pad') || e.target.closest('#mobile-spaceship-btn')) return;
+            this.touchLookState.active = true;
+            this.touchLookState.x = e.touches[0].clientX;
+            this.touchLookState.y = e.touches[0].clientY;
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!this.isActive || !this.touchLookState.active) return;
+            const deltaX = e.touches[0].clientX - this.touchLookState.x;
+            const deltaY = e.touches[0].clientY - this.touchLookState.y;
+
+            this.camera.rotation.y -= deltaX * this.touchRotationSpeed;
+            this.camera.rotation.x -= deltaY * this.touchRotationSpeed;
+            this.camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.camera.rotation.x));
+
+            this.touchLookState.x = e.touches[0].clientX;
+            this.touchLookState.y = e.touches[0].clientY;
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            this.touchLookState.active = false;
+        });
+
         this.controls.addEventListener('unlock', () => {
-            if (this.isActive) this.deactivate();
+            if (this.isActive && !this.isMobile) this.deactivate();
         });
     }
 
@@ -96,11 +199,12 @@ export class SpaceshipHUD {
             document.body.classList.remove('spaceship-active');
         }
 
-        // Hide all top-level body children except canvas, ufo-hud, and top nav
         Array.from(document.body.children).forEach(child => {
             const id = child.id;
             const isTopNav = child.classList.contains('top-nav-container');
-            if (id !== 'canvas-container' && id !== 'ufo-hud' && !isTopNav) {
+            const isMobileBtn = id === 'mobile-spaceship-btn';
+            const isMobilePad = id === 'mobile-flight-pad';
+            if (id !== 'canvas-container' && id !== 'ufo-hud' && !isTopNav && !isMobileBtn && !isMobilePad) {
                 child.style.display = show ? '' : 'none';
             }
         });
@@ -109,20 +213,30 @@ export class SpaceshipHUD {
     activate() {
         this.isActive = true;
         this.hudContainer.style.display = 'block';
+        if (this.mobileControls) this.mobileControls.style.display = 'flex';
+        this.mobileBtn.innerText = '❌ EXIT FLIGHT';
         this.toggleStandardUI(false);
         this.velocity.set(0, 0, 0);
-        this.controls.lock();
+
+        if (!this.isMobile) {
+            this.controls.lock();
+        }
     }
 
     deactivate() {
         this.isActive = false;
         this.hudContainer.style.display = 'none';
+        if (this.mobileControls) this.mobileControls.style.display = 'none';
+        this.mobileBtn.innerText = '🚀 FLIGHT MODE';
         this.toggleStandardUI(true);
-        this.controls.unlock();
+
+        if (!this.isMobile) {
+            this.controls.unlock();
+        }
     }
 
     update(deltaTime) {
-        if (!this.isActive || !this.controls.isLocked) return;
+        if (!this.isActive) return;
 
         this.inputVector.set(0, 0, 0);
         if (this.keyState.W) this.inputVector.z -= 1;
