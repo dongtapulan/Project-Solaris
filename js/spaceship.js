@@ -1,27 +1,37 @@
 import * as THREE from 'three';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { SpaceshipModel } from './shipModel.js';
 
 export class SpaceshipHUD {
-    constructor(camera, domElement, sceneObjects) {
+    constructor(camera, domElement, sceneObjects, scene) {
         this.camera = camera;
         this.domElement = domElement;
         this.sceneObjects = sceneObjects;
+        this.scene = scene;
         
-        this.controls = new PointerLockControls(camera, domElement);
         this.isActive = false;
+        this.isThirdPerson = false;
 
         // Physics State
-        this.velocity = new THREE.Vector3();
-        this.inputVector = new THREE.Vector3();
-        this.accel = 700;
-        this.damping = 0.95;
+        this.position = new THREE.Vector3(0, 0, 0);
+        this.velocity = new THREE.Vector3(0, 0, 0);
+        this.acceleration = new THREE.Vector3(0, 0, 0);
+        
+        this.pitch = 0;
+        this.yaw = 0;
+        this.roll = 0;
 
-        // Mobile Touch Control State
-        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-        this.touchLookState = { active: false, x: 0, y: 0 };
-        this.touchRotationSpeed = 0.003;
+        this.enginePower = 0; // Throttle range: -50% (Reverse) to 100% (Forward)
+        this.maxThrust = 150;
+        this.rotationSpeed = 1.2;
+        this.drag = 0.985; 
 
-        this.keyState = { W: false, S: false, A: false, D: false, Space: false, Shift: false };
+        this.isMouseDown = false;
+        this.mousePos = { x: 0, y: 0 };
+        this.orbitAngles = { x: 0, y: 0.2 };
+
+        this.keyState = { W: false, S: false, A: false, D: false, Q: false, E: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+
+        this.shipModule = new SpaceshipModel(scene, camera);
 
         this.initUI();
         this.initListeners();
@@ -29,7 +39,7 @@ export class SpaceshipHUD {
 
     initUI() {
         this.hudContainer = document.createElement('div');
-        this.hudContainer.id = 'ufo-hud';
+        this.hudContainer.id = 'spaceship-hud';
         this.hudContainer.style.cssText = `
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; display: none; font-family: 'Courier New', monospace;
@@ -37,20 +47,56 @@ export class SpaceshipHUD {
         `;
 
         this.hudContainer.innerHTML = `
+            <div style="position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 150px; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
+                <div style="position: absolute; bottom: 0; width: 100%; height: 115px; background: linear-gradient(to top, rgba(2, 6, 23, 0.92), rgba(15, 23, 42, 0.8)); border-top: 1.5px solid rgba(56, 189, 248, 0.4); border-left: 1.5px solid rgba(56, 189, 248, 0.2); border-right: 1.5px solid rgba(56, 189, 248, 0.2); border-top-left-radius: 35px; border-top-right-radius: 35px; box-shadow: 0 -10px 30px rgba(56, 189, 248, 0.12); backdrop-filter: blur(6px); display: flex; justify-content: space-between; align-items: center; padding: 12px 40px; box-sizing: border-box; pointer-events: auto;">
+                    
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid rgba(56, 189, 248, 0.3); background: rgba(3, 7, 18, 0.75); border-radius: 50%; width: 65px; height: 65px; position: relative;">
+                            <div style="font-size: 6px; color: #94a3b8; position: absolute; top: 6px;">ATTITUDE</div>
+                            <div id="cockpit-pitch" style="font-size: 9px; font-weight: bold; color: #38bdf8;">P: 0°</div>
+                            <div id="cockpit-roll" style="font-size: 8px; color: #38bdf8;">R: 0°</div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <span style="font-size: 8px; color: #94a3b8;">SYS: <strong style="color: #34d399;">NOMINAL</strong></span>
+                            <button id="btn-toggle-view" style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.5); color: #38bdf8; padding: 4px 8px; border-radius: 4px; font-size: 8px; font-family: monospace; font-weight: bold; cursor: pointer; transition: all 0.2s;">
+                                VIEW: 1ST PERSON
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+                        <div style="font-size: 8px; letter-spacing: 1.5px; color: #94a3b8;">THRUSTER THROTTLE (REV / FWD)</div>
+                        <div style="width: 220px; height: 10px; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 5px; overflow: hidden; padding: 1px; position: relative;">
+                            <div id="throttle-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #f87171, #38bdf8, #818cf8); border-radius: 3px; transition: width 0.1s linear;"></div>
+                        </div>
+                        <div style="display: flex; gap: 15px; font-size: 10px; margin-top: 2px;">
+                            <span id="cockpit-speed" style="font-weight: bold; color: #38bdf8;">SPD: 0.0 AU/s</span>
+                            <span id="cockpit-throttle-val" style="color: #94a3b8;">THR: 0%</span>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; font-size: 9px; color: #38bdf8; gap: 2px; background: rgba(3, 7, 18, 0.5); padding: 6px 10px; border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 5px;">
+                        <div style="font-size: 7px; color: #94a3b8; letter-spacing: 0.5px;">INERTIAL POSITION</div>
+                        <div id="cockpit-pos-x">X: 0.00 AU</div>
+                        <div id="cockpit-pos-y">Y: 0.00 AU</div>
+                        <div id="cockpit-pos-z">Z: 0.00 AU</div>
+                    </div>
+                </div>
+            </div>
+
             <svg id="ufo-visor" width="100%" height="100%" style="position:absolute; top:0; left:0;">
-                <ellipse cx="50%" cy="50%" rx="48%" ry="45%" fill="none" stroke="rgba(56, 189, 248, 0.25)" stroke-width="3" stroke-dasharray="12 6" />
-                <ellipse cx="50%" cy="50%" rx="46%" ry="43%" fill="none" stroke="rgba(56, 189, 248, 0.15)" stroke-width="1" />
-                
-                <g transform="translate(0,0)" id="center-reticle">
-                    <circle cx="50%" cy="50%" r="18" fill="none" stroke="#38bdf8" stroke-width="1.5" opacity="0.6"/>
-                    <circle cx="50%" cy="50%" r="4" fill="#38bdf8" opacity="0.8"/>
-                </g>
+                <ellipse cx="50%" cy="50%" rx="48%" ry="45%" fill="none" stroke="rgba(56, 189, 248, 0.1)" stroke-width="1" stroke-dasharray="10 5" />
+                <circle cx="50%" cy="50%" r="4" fill="none" stroke="rgba(56, 189, 248, 0.3)" stroke-width="1"/>
             </svg>
 
-            <div style="position: absolute; top: 80px; left: 35px; background: rgba(8, 15, 30, 0.85); padding: 12px 18px; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; backdrop-filter: blur(4px);">
-                <div style="font-size: 11px; color: #94a3b8; letter-spacing: 1px;">FLIGHT TELEMETRY</div>
-                <div id="ufo-speed" style="font-size: 16px; font-weight: bold; margin-top: 4px;">VEL: 0.00 AU/s</div>
-                <div id="ufo-coords" style="font-size: 11px; color: #38bdf8; margin-top: 2px;">POS: X 0 | Y 0 | Z 0</div>
+            <div style="position: absolute; top: 70px; left: 25px; background: rgba(8, 15, 30, 0.8); padding: 10px 14px; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; backdrop-filter: blur(4px); font-size: 9px; color: #94a3b8; line-height: 1.4;">
+                <strong style="color: #38bdf8;">NEWTONIAN CONTROLS:</strong><br/>
+                [W / S] Throttle Forward / Reverse (-50% to 100%)<br/>
+                [A / D / Q / E] Yaw & Roll<br/>
+                [Arrow Keys] Pitch & Turn<br/>
+                [C] Toggle 1st / 3rd Person View<br/>
+                [Mouse Drag] 360° Free Camera Orbit<br/>
+                [F] Exit Flight Mode
             </div>
 
             <div id="ufo-targets-layer" style="position: absolute; top:0; left:0; width:100%; height:100%;"></div>
@@ -58,92 +104,57 @@ export class SpaceshipHUD {
 
         document.body.appendChild(this.hudContainer);
         this.targetsLayer = document.getElementById('ufo-targets-layer');
-
         this.createMobileUI();
+
+        document.getElementById('btn-toggle-view').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleCameraView();
+        });
+    }
+
+    toggleCameraView() {
+        this.isThirdPerson = !this.isThirdPerson;
+        const btn = document.getElementById('btn-toggle-view');
+        if (btn) {
+            btn.innerText = this.isThirdPerson ? 'VIEW: 3RD PERSON' : 'VIEW: 1ST PERSON';
+            btn.style.background = this.isThirdPerson ? 'rgba(56, 189, 248, 0.3)' : 'rgba(56, 189, 248, 0.1)';
+        }
     }
 
     createMobileUI() {
-        // Floating Toggle Button
         this.mobileBtn = document.createElement('button');
         this.mobileBtn.id = 'mobile-spaceship-btn';
         this.mobileBtn.innerText = '🚀 FLIGHT MODE';
         this.mobileBtn.style.cssText = `
             position: fixed; bottom: 20px; right: 20px; z-index: 999;
-            background: rgba(14, 165, 233, 0.25); border: 1px solid #38bdf8;
-            color: #38bdf8; padding: 10px 16px; border-radius: 20px;
-            font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: bold;
-            backdrop-filter: blur(8px); box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
-            cursor: pointer; user-select: none; -webkit-user-select: none;
+            background: rgba(14, 165, 233, 0.2); border: 1px solid #38bdf8;
+            color: #38bdf8; padding: 8px 14px; border-radius: 18px;
+            font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: bold;
+            backdrop-filter: blur(6px); cursor: pointer; user-select: none;
         `;
         this.mobileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleMode();
         });
         document.body.appendChild(this.mobileBtn);
-
-        // Mobile Flight Controls Container
-        this.mobileControls = document.createElement('div');
-        this.mobileControls.id = 'mobile-flight-pad';
-        this.mobileControls.style.cssText = `
-            position: fixed; bottom: 20px; left: 20px; z-index: 1001;
-            display: none; gap: 8px; flex-direction: column; pointer-events: auto;
-        `;
-        this.mobileControls.innerHTML = `
-            <div style="display: flex; gap: 8px;">
-                <button id="btn-fwd" style="${this.getTouchBtnStyle()}">▲ FWD</button>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <button id="btn-left" style="${this.getTouchBtnStyle()}">◀ L</button>
-                <button id="btn-back" style="${this.getTouchBtnStyle()}">▼ BWD</button>
-                <button id="btn-right" style="${this.getTouchBtnStyle()}">R ▶</button>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <button id="btn-up" style="${this.getTouchBtnStyle()}">▲ UP</button>
-                <button id="btn-down" style="${this.getTouchBtnStyle()}">▼ DOWN</button>
-            </div>
-        `;
-        document.body.appendChild(this.mobileControls);
-
-        this.bindTouchPadEvents();
-    }
-
-    getTouchBtnStyle() {
-        return `
-            background: rgba(8, 15, 30, 0.85); border: 1px solid rgba(56, 189, 248, 0.5);
-            color: #38bdf8; padding: 10px 14px; border-radius: 6px; font-size: 10px;
-            font-family: monospace; font-weight: bold; user-select: none; -webkit-user-select: none;
-        `;
-    }
-
-    bindTouchPadEvents() {
-        const bindBtn = (id, key) => {
-            const btn = document.getElementById(id);
-            if (!btn) return;
-            btn.addEventListener('touchstart', (e) => { e.preventDefault(); this.keyState[key] = true; });
-            btn.addEventListener('touchend', (e) => { e.preventDefault(); this.keyState[key] = false; });
-            btn.addEventListener('mousedown', () => { this.keyState[key] = true; });
-            btn.addEventListener('mouseup', () => { this.keyState[key] = false; });
-        };
-
-        bindBtn('btn-fwd', 'W');
-        bindBtn('btn-back', 'S');
-        bindBtn('btn-left', 'A');
-        bindBtn('btn-right', 'D');
-        bindBtn('btn-up', 'Space');
-        bindBtn('btn-down', 'Shift');
     }
 
     initListeners() {
         window.addEventListener('keydown', (e) => {
             if (e.code === 'KeyF') this.toggleMode();
+            if (e.code === 'KeyC') this.toggleCameraView();
             if (!this.isActive) return;
 
             if (e.code === 'KeyW') this.keyState.W = true;
             if (e.code === 'KeyS') this.keyState.S = true;
             if (e.code === 'KeyA') this.keyState.A = true;
             if (e.code === 'KeyD') this.keyState.D = true;
-            if (e.code === 'Space') this.keyState.Space = true;
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.keyState.Shift = true;
+            if (e.code === 'KeyQ') this.keyState.Q = true;
+            if (e.code === 'KeyE') this.keyState.E = true;
+            if (e.code === 'ArrowUp') this.keyState.ArrowUp = true;
+            if (e.code === 'ArrowDown') this.keyState.ArrowDown = true;
+            if (e.code === 'ArrowLeft') this.keyState.ArrowLeft = true;
+            if (e.code === 'ArrowRight') this.keyState.ArrowRight = true;
         });
 
         window.addEventListener('keyup', (e) => {
@@ -153,37 +164,36 @@ export class SpaceshipHUD {
             if (e.code === 'KeyS') this.keyState.S = false;
             if (e.code === 'KeyA') this.keyState.A = false;
             if (e.code === 'KeyD') this.keyState.D = false;
-            if (e.code === 'Space') this.keyState.Space = false;
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.keyState.Shift = false;
+            if (e.code === 'KeyQ') this.keyState.KeyQ = false;
+            if (e.code === 'KeyE') this.keyState.KeyE = false;
+            if (e.code === 'ArrowUp') this.keyState.ArrowUp = false;
+            if (e.code === 'ArrowDown') this.keyState.ArrowDown = false;
+            if (e.code === 'ArrowLeft') this.keyState.ArrowLeft = false;
+            if (e.code === 'ArrowRight') this.keyState.ArrowRight = false;
         });
 
-        // Touch Drag Camera Look for Mobile
-        window.addEventListener('touchstart', (e) => {
-            if (!this.isActive || e.target.closest('#mobile-flight-pad') || e.target.closest('#mobile-spaceship-btn')) return;
-            this.touchLookState.active = true;
-            this.touchLookState.x = e.touches[0].clientX;
-            this.touchLookState.y = e.touches[0].clientY;
-        }, { passive: false });
-
-        window.addEventListener('touchmove', (e) => {
-            if (!this.isActive || !this.touchLookState.active) return;
-            const deltaX = e.touches[0].clientX - this.touchLookState.x;
-            const deltaY = e.touches[0].clientY - this.touchLookState.y;
-
-            this.camera.rotation.y -= deltaX * this.touchRotationSpeed;
-            this.camera.rotation.x -= deltaY * this.touchRotationSpeed;
-            this.camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.camera.rotation.x));
-
-            this.touchLookState.x = e.touches[0].clientX;
-            this.touchLookState.y = e.touches[0].clientY;
-        }, { passive: false });
-
-        window.addEventListener('touchend', () => {
-            this.touchLookState.active = false;
+        window.addEventListener('mousedown', (e) => {
+            if (!this.isActive || e.target.closest('#mobile-spaceship-btn') || e.target.closest('#spaceship-hud')) return;
+            this.isMouseDown = true;
+            this.mousePos.x = e.clientX;
+            this.mousePos.y = e.clientY;
         });
 
-        this.controls.addEventListener('unlock', () => {
-            if (this.isActive && !this.isMobile) this.deactivate();
+        window.addEventListener('mousemove', (e) => {
+            if (!this.isActive || !this.isMouseDown) return;
+            const deltaX = e.clientX - this.mousePos.x;
+            const deltaY = e.clientY - this.mousePos.y;
+
+            this.orbitAngles.x -= deltaX * 0.005;
+            this.orbitAngles.y += deltaY * 0.005;
+            this.orbitAngles.y = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, this.orbitAngles.y));
+
+            this.mousePos.x = e.clientX;
+            this.mousePos.y = e.clientY;
+        });
+
+        window.addEventListener('mouseup', () => {
+            this.isMouseDown = false;
         });
     }
 
@@ -193,18 +203,11 @@ export class SpaceshipHUD {
     }
 
     toggleStandardUI(show) {
-        if (!show) {
-            document.body.classList.add('spaceship-active');
-        } else {
-            document.body.classList.remove('spaceship-active');
-        }
-
         Array.from(document.body.children).forEach(child => {
             const id = child.id;
             const isTopNav = child.classList.contains('top-nav-container');
             const isMobileBtn = id === 'mobile-spaceship-btn';
-            const isMobilePad = id === 'mobile-flight-pad';
-            if (id !== 'canvas-container' && id !== 'ufo-hud' && !isTopNav && !isMobileBtn && !isMobilePad) {
+            if (id !== 'canvas-container' && id !== 'spaceship-hud' && !isTopNav && !isMobileBtn) {
                 child.style.display = show ? '' : 'none';
             }
         });
@@ -213,61 +216,105 @@ export class SpaceshipHUD {
     activate() {
         this.isActive = true;
         this.hudContainer.style.display = 'block';
-        if (this.mobileControls) this.mobileControls.style.display = 'flex';
         this.mobileBtn.innerText = '❌ EXIT FLIGHT';
         this.toggleStandardUI(false);
-        this.velocity.set(0, 0, 0);
 
-        if (!this.isMobile) {
-            this.controls.lock();
+        // --- START FLIGHT NEAR EARTH ---
+        const earthObj = this.sceneObjects.find(o => o.data.name === "Earth");
+        if (earthObj && earthObj.mesh) {
+            const earthPos = new THREE.Vector3();
+            earthObj.mesh.getWorldPosition(earthPos);
+            // Spawn slightly offset from Earth so we start right next to it
+            this.position.copy(earthPos).add(new THREE.Vector3(15, 5, 15));
+        } else {
+            this.position.set(0, 50, 150);
         }
+
+        this.velocity.set(0, 0, 0);
+        this.pitch = 0;
+        this.yaw = 0;
+        this.roll = 0;
+        this.enginePower = 0;
+        this.orbitAngles.x = 0;
+        this.orbitAngles.y = 0.2;
     }
 
     deactivate() {
         this.isActive = false;
         this.hudContainer.style.display = 'none';
-        if (this.mobileControls) this.mobileControls.style.display = 'none';
         this.mobileBtn.innerText = '🚀 FLIGHT MODE';
         this.toggleStandardUI(true);
 
-        if (!this.isMobile) {
-            this.controls.unlock();
+        if (this.shipModule) {
+            this.shipModule.setVisibility(false);
         }
     }
 
     update(deltaTime) {
         if (!this.isActive) return;
 
-        this.inputVector.set(0, 0, 0);
-        if (this.keyState.W) this.inputVector.z -= 1;
-        if (this.keyState.S) this.inputVector.z += 1;
-        if (this.keyState.A) this.inputVector.x -= 1;
-        if (this.keyState.D) this.inputVector.x += 1;
-        if (this.keyState.Space) this.inputVector.y += 1;
-        if (this.keyState.Shift) this.inputVector.y -= 1;
+        // --- Throttle controls allowing reverse (-50% to 100%) ---
+        if (this.keyState.W) this.enginePower = Math.min(100, this.enginePower + 40 * deltaTime);
+        if (this.keyState.S) this.enginePower = Math.max(-50, this.enginePower - 40 * deltaTime);
 
-        this.inputVector.normalize();
+        const rotRate = this.rotationSpeed * deltaTime;
+        if (this.keyState.A || this.keyState.ArrowLeft) this.yaw += rotRate;
+        if (this.keyState.D || this.keyState.ArrowRight) this.yaw -= rotRate;
+        if (this.keyState.ArrowUp) this.pitch += rotRate;
+        if (this.keyState.ArrowDown) this.pitch -= rotRate;
+        if (this.keyState.Q) this.roll += rotRate;
+        if (this.keyState.E) this.roll -= rotRate;
 
-        const forwardDir = new THREE.Vector3();
-        const rightDir = new THREE.Vector3();
-        const upDir = new THREE.Vector3(0, 1, 0);
+        const forwardDir = new THREE.Vector3(0, 0, -1);
+        const euler = new THREE.Euler(this.pitch, this.yaw, this.roll, 'YXZ');
+        forwardDir.applyEuler(euler);
 
-        this.camera.getWorldDirection(forwardDir);
-        rightDir.crossVectors(forwardDir, upDir).normalize();
+        const thrustMagnitude = (this.enginePower / 100) * this.maxThrust;
+        this.acceleration.copy(forwardDir).multiplyScalar(thrustMagnitude);
 
-        const thrust = new THREE.Vector3();
-        thrust.addScaledVector(forwardDir, -this.inputVector.z);
-        thrust.addScaledVector(rightDir, this.inputVector.x);
-        thrust.addScaledVector(upDir, this.inputVector.y);
+        this.velocity.addScaledVector(this.acceleration, deltaTime);
+        this.velocity.multiplyScalar(Math.pow(this.drag, deltaTime * 60));
+        this.position.addScaledVector(this.velocity, deltaTime);
 
-        this.velocity.addScaledVector(thrust, this.accel * deltaTime);
-        this.velocity.multiplyScalar(Math.pow(this.damping, deltaTime * 60));
-        this.camera.position.addScaledVector(this.velocity, deltaTime);
+        if (this.shipModule) {
+            this.shipModule.update(this.position, euler, this.isThirdPerson);
+        }
 
-        const speed = this.velocity.length().toFixed(1);
-        const pos = this.camera.position;
-        document.getElementById('ufo-speed').innerText = `VEL: ${speed} AU/s`;
-        document.getElementById('ufo-coords').innerText = `POS: X ${pos.x.toFixed(0)} | Y ${pos.y.toFixed(0)} | Z ${pos.z.toFixed(0)}`;
+        if (this.isThirdPerson) {
+            const orbitDist = 12;
+            const offsetX = Math.sin(this.orbitAngles.x) * Math.cos(this.orbitAngles.y) * orbitDist;
+            const offsetY = Math.sin(this.orbitAngles.y) * orbitDist;
+            const offsetZ = Math.cos(this.orbitAngles.x) * Math.cos(this.orbitAngles.y) * orbitDist;
+
+            const relativeOffset = new THREE.Vector3(offsetX, offsetY, offsetZ).applyEuler(euler);
+            this.camera.position.copy(this.position).add(relativeOffset);
+            this.camera.lookAt(this.position);
+        } else {
+            this.camera.position.copy(this.position);
+            const cockpitEuler = new THREE.Euler(
+                this.pitch + this.orbitAngles.y,
+                this.yaw + this.orbitAngles.x,
+                this.roll,
+                'YXZ'
+            );
+            this.camera.quaternion.setFromEuler(cockpitEuler);
+        }
+
+        // Telemetry UI updates
+        const speed = this.velocity.length();
+        document.getElementById('cockpit-speed').innerText = `SPD: ${speed.toFixed(1)} AU/s`;
+        document.getElementById('cockpit-throttle-val').innerText = `THR: ${Math.round(this.enginePower)}%`;
+        
+        // Throttle bar percentage representation (-50 to 100)
+        const barPct = ((this.enginePower + 50) / 150) * 100;
+        document.getElementById('throttle-bar').style.width = `${barPct}%`;
+
+        document.getElementById('cockpit-pitch').innerText = `P: ${Math.round(this.pitch * (180 / Math.PI))}°`;
+        document.getElementById('cockpit-roll').innerText = `R: ${Math.round(this.roll * (180 / Math.PI))}°`;
+
+        document.getElementById('cockpit-pos-x').innerText = `X: ${this.position.x.toFixed(2)} AU`;
+        document.getElementById('cockpit-pos-y').innerText = `Y: ${this.position.y.toFixed(2)} AU`;
+        document.getElementById('cockpit-pos-z').innerText = `Z: ${this.position.z.toFixed(2)} AU`;
 
         this.renderTargetCrosshairs();
     }
@@ -299,9 +346,9 @@ export class SpaceshipHUD {
 
             html += `
                 <div style="position: absolute; left: ${x}px; top: ${y}px; transform: translate(-50%, -50%); pointer-events: none; text-align: center;">
-                    <div style="width: 24px; height: 24px; border: 1px dashed #38bdf8; border-radius: 50%; margin: 0 auto;"></div>
-                    <div style="font-size: 10px; font-weight: bold; color: #38bdf8; background: rgba(5, 10, 20, 0.7); padding: 2px 4px; border-radius: 3px; margin-top: 4px; white-space: nowrap;">
-                        ${name.toUpperCase()} <span style="color: #94a3b8; font-size: 9px;">${dist} AU</span>
+                    <div style="width: 16px; height: 16px; border: 1px dashed rgba(56, 189, 248, 0.3); border-radius: 50%; margin: 0 auto;"></div>
+                    <div style="font-size: 8px; font-weight: bold; color: rgba(56, 189, 248, 0.8); background: rgba(3, 7, 18, 0.65); padding: 1px 4px; border-radius: 3px; margin-top: 2px; white-space: nowrap; border: 1px solid rgba(56, 189, 248, 0.15);">
+                        ${name.toUpperCase()} <span style="color: #94a3b8; font-size: 7px;">${dist} AU</span>
                     </div>
                 </div>
             `;

@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CONFIG, SYSTEM_DATA } from './data.js';
 import { scene, camera, renderer, handleResize } from './scene.js';
-import { createStars, createOortCloud, buildSystem, loadingManager } from './entities.js';
+import { createStars, createMilkyWay, createOortCloud, buildSystem, loadingManager } from './entities.js';
 import { initUI, updatePanel } from './ui.js';
 import { initLoader } from './loader.js';
 import { TimeEngine } from './utils/time.js'; 
 import { fetchSolarWeather, fetchNEOs } from './utils/telemetry.js';
 import { SpaceshipHUD } from './spaceship.js';
+import { CinematicApproach } from './utils/cinematic.js';
 
 // 1. Initialize Loading Screen
 initLoader(loadingManager);
@@ -22,22 +23,24 @@ document.getElementById('canvas-container').appendChild(renderer.domElement);
 // Setup OrbitControls with Enhanced Motion Physics
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.04;      // Floatier momentum stop
-controls.rotateSpeed = 0.7;         // Snappy but fluid rotation
-controls.zoomSpeed = 0.8;           // Smooth wheel zoom
-controls.panSpeed = 0.6;            // Controlled panning speed
-controls.zoomToCursor = true;       // Zoom directly toward cursor pointer
-controls.screenSpacePanning = true; // Natural 2D screen panning
+controls.dampingFactor = 0.04;      
+controls.rotateSpeed = 0.7;         
+controls.zoomSpeed = 0.8;           
+controls.panSpeed = 0.6;            
+controls.zoomToCursor = true;       
+controls.screenSpacePanning = true; 
 controls.minDistance = 2;
 controls.maxDistance = 15000;
 
 // 3. Initialize System Entities 
 createStars(scene);
+createMilkyWay(scene);
 const oortCloud = createOortCloud(scene); 
 const objects = buildSystem(scene, SYSTEM_DATA, camera);
 
-// 4. Initialize Spaceship HUD Module
-const spaceshipHUD = new SpaceshipHUD(camera, renderer.domElement, objects);
+// 4. Initialize Spaceship HUD & Cinematic Approach Modules (Passing scene reference for Poly Pizza model integration)
+const spaceshipHUD = new SpaceshipHUD(camera, renderer.domElement, objects, scene);
+const cinematicApproach = new CinematicApproach(camera, controls);
 
 let focusedObject = null;
 const targetCameraPosition = new THREE.Vector3(0, 500, 1000);
@@ -88,7 +91,7 @@ updateTelemetry();
 setInterval(updateTelemetry, 300000);
 
 /**
- * Camera Focus Logic
+ * Camera Focus & Cinematic Approach Trigger
  */
 function focusOn(planetName) {
     const target = objects.find(o => o.data.name === planetName);
@@ -97,17 +100,8 @@ function focusOn(planetName) {
     focusedObject = target;
     updatePanel(target.data);
 
-    if (target.data.type === 'BELT') {
-        const orbitDist = target.data.distance || 600; 
-        targetCameraPosition.set(0, orbitDist * 1.2, orbitDist * 1.8);
-        controls.target.set(0, 0, 0);
-    } else {
-        const worldPos = new THREE.Vector3();
-        target.mesh.getWorldPosition(worldPos);
-        const offset = 20 + (target.data.size * (CONFIG.zoomFactor || 5));
-        targetCameraPosition.set(worldPos.x + offset, worldPos.y + offset * 0.5, worldPos.z + offset);
-        controls.target.copy(worldPos);
-    }
+    // Trigger smooth cinematic approach flight
+    cinematicApproach.start(target, target.data.size || 10);
 }
 
 function resetView() {
@@ -203,10 +197,19 @@ function animate(currentTime) {
         }
     });
 
-    // --- MODE BRANCHING: SPACESHIP VS ORBITAL CAM ---
+    // --- MODE BRANCHING: SPACESHIP VS CINEMATIC APPROACH VS ORBITAL CAM ---
     if (spaceshipHUD.isActive) {
         controls.enabled = false;
         spaceshipHUD.update(deltaTime);
+    } else if (cinematicApproach.isApproaching) {
+        controls.enabled = false;
+        cinematicApproach.update(deltaTime);
+        
+        if (focusedObject && focusedObject.data.type !== 'BELT') {
+            const worldPos = new THREE.Vector3();
+            focusedObject.mesh.getWorldPosition(worldPos);
+            controls.target.copy(worldPos);
+        }
     } else {
         controls.enabled = true;
 
